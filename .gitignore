@@ -22,3 +22,7 @@ app.db
 media/
 
 .workbuddy/
+
+# Local database backups
+*.bak
+app.db.*

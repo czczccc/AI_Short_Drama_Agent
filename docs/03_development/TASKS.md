@@ -15,7 +15,9 @@
 - [x] Director Agent
 - [x] 结构化故事设定与 10 集大纲
 - [x] 大纲 Pydantic 校验、Project 持久化与 `outline_ready` 状态
-- [ ] Writer Agent
+- [x] Writer Agent
+- [x] 单集结构化剧本生成与 Pydantic 校验
+- [x] `scripts_json` 按集保存、覆盖与查询 API
 - [ ] Character Agent
 
 

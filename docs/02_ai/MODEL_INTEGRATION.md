@@ -7,13 +7,15 @@
 - 分镜
 - Prompt生成
 
-Phase 2A 当前范围仅包含 Director Agent 的结构化短剧大纲生成。
+Phase 2A 使用 Director Agent 生成结构化短剧大纲。Phase 2B 在同一 Provider 接口上增加 Writer Agent，用于生成单集结构化剧本。
 
 当前默认 Provider：DeepSeek V4 Pro。
 
 未来计划 Provider：OpenAI（本阶段不实现）。
 
 业务层只依赖通用 `LLMProvider.generate_structured(system_prompt, user_prompt, output_schema)`，不依赖供应商 SDK 或专有类型。新增 OpenAI 支持时，只新增对应 Provider 并通过 `LLM_PROVIDER=openai` 选择；Director Agent、Outline Service、API、Schema 和数据库保持不变。
+
+Writer Agent 同样只依赖 `LLMProvider`，不直接导入或创建 DeepSeek 客户端。Writer 输入整体大纲、角色设定、指定分集大纲和目标时长，输出经 `EpisodeScript` 及大纲上下文二次校验后才能持久化。
 
 ## DeepSeek Provider
 

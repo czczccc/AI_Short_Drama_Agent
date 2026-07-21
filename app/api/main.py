@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
-from app.api import outlines, projects
+from app.api import outlines, projects, scripts
 from app.configs.settings import get_settings
 from app.database.session import init_db
 from app.providers.llm.base import (
@@ -71,3 +71,4 @@ def health_check() -> dict:
 
 app.include_router(projects.router)
 app.include_router(outlines.router)
+app.include_router(scripts.router)

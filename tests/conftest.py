@@ -28,7 +28,10 @@ def _file_digest(path: Path) -> str | None:
 @pytest.fixture(scope="session")
 def formal_db_snapshot() -> str | None:
     """记录正式数据库内容，用于证明测试过程没有改写它。"""
-    return _file_digest(Path("app.db"))
+    formal_db = Path("app.db")
+    snapshot = _file_digest(formal_db)
+    yield snapshot
+    assert _file_digest(formal_db) == snapshot
 
 
 @pytest.fixture(scope="session")

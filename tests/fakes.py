@@ -3,6 +3,7 @@ from typing import TypeVar
 from pydantic import BaseModel
 
 from app.schemas.outline import StoryOutline
+from app.schemas.script import EpisodeScript
 
 
 SchemaT = TypeVar("SchemaT", bound=BaseModel)
@@ -63,7 +64,53 @@ def valid_outline_data() -> dict:
     }
 
 
+def valid_script_data(
+    episode_number: int = 1,
+    title: str | None = None,
+    character_id: str = "lin_feng",
+) -> dict:
+    return {
+        "episode_number": episode_number,
+        "title": title or f"第{episode_number}集AI证据争夺战",
+        "duration_seconds": 90,
+        "episode_goal": "林峰必须抢在高启之前取得服务器证据。",
+        "opening_hook": "开场五秒内，林峰的电脑突然开始远程自毁。",
+        "scenes": [
+            {
+                "scene_number": number,
+                "location": "人工智能公司机房",
+                "time_of_day": "深夜",
+                "characters": [character_id],
+                "scene_goal": f"完成第{number}步取证。",
+                "action": "警报声逼近，林峰迅速复制关键文件。",
+                "dialogues": [
+                    {
+                        "character_id": character_id,
+                        "character_name": "林峰",
+                        "emotion": "紧张",
+                        "line": "只剩十秒，必须拿到证据！",
+                        "action_note": "手指飞快敲击键盘。",
+                    }
+                ],
+                "transition": "画面切向不断缩短的倒计时。",
+            }
+            for number in range(1, 4)
+        ],
+        "ending_hook": "文件打开后，屏幕上竟出现苏妍父亲的名字。",
+    }
+
+
 class FakeLLMProvider:
+    def __init__(
+        self,
+        script_episode_number: int = 1,
+        script_title: str | None = None,
+        script_character_id: str = "lin_feng",
+    ) -> None:
+        self.script_episode_number = script_episode_number
+        self.script_title = script_title
+        self.script_character_id = script_character_id
+
     def generate_structured(
         self,
         system_prompt: str,
@@ -72,7 +119,17 @@ class FakeLLMProvider:
     ) -> SchemaT:
         assert "JSON" in system_prompt
         assert user_prompt.strip()
-        return output_schema.model_validate(valid_outline_data())
+        if output_schema is StoryOutline:
+            return output_schema.model_validate(valid_outline_data())
+        if output_schema is EpisodeScript:
+            return output_schema.model_validate(
+                valid_script_data(
+                    episode_number=self.script_episode_number,
+                    title=self.script_title,
+                    character_id=self.script_character_id,
+                )
+            )
+        raise AssertionError(f"Unsupported output schema: {output_schema}")
 
 
 class FailingLLMProvider:

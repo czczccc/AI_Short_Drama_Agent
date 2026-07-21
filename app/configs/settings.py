@@ -10,6 +10,13 @@ class Settings(BaseSettings):
     app_env: str = "development"
     debug: bool = True
     database_url: str = "sqlite:///./app.db"
+    llm_provider: str = "deepseek"
+    deepseek_api_key: str = ""
+    deepseek_base_url: str = "https://api.deepseek.com"
+    deepseek_model: str = "deepseek-v4-pro"
+    deepseek_timeout_seconds: float = 120
+    deepseek_max_tokens: int = 12000
+    deepseek_thinking_enabled: bool = False
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"

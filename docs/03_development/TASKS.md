@@ -10,7 +10,11 @@
 
 ## Phase 2 AI文本
 
-- [ ] Director Agent
+- [x] 通用 LLM Provider 接口
+- [x] DeepSeek Provider
+- [x] Director Agent
+- [x] 结构化故事设定与 10 集大纲
+- [x] 大纲 Pydantic 校验、Project 持久化与 `outline_ready` 状态
 - [ ] Writer Agent
 - [ ] Character Agent
 

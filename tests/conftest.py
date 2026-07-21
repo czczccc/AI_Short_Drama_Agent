@@ -3,6 +3,7 @@
 测试使用独立的临时 SQLite 数据库，通过 FastAPI 依赖注入覆盖正式数据库会话，
 不读取也不写入正式 app.db。测试会话结束后临时库自动删除。
 """
+import hashlib
 import shutil
 import tempfile
 from pathlib import Path
@@ -16,6 +17,18 @@ from app.api.main import app
 from app.database.base import Base
 from app.database.session import get_db
 from app.models import project  # noqa: F401  # 注册模型到 Base.metadata
+
+
+def _file_digest(path: Path) -> str | None:
+    if not path.exists():
+        return None
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+@pytest.fixture(scope="session")
+def formal_db_snapshot() -> str | None:
+    """记录正式数据库内容，用于证明测试过程没有改写它。"""
+    return _file_digest(Path("app.db"))
 
 
 @pytest.fixture(scope="session")
@@ -33,13 +46,14 @@ def test_engine():
     shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
-@pytest.fixture(scope="session", autouse=True)
-def _override_db(test_engine):
-    """用依赖注入覆盖正式 get_db，使所有测试请求走临时数据库。"""
-    test_session_local = sessionmaker(
-        autocommit=False, autoflush=False, bind=test_engine
-    )
+@pytest.fixture(scope="session")
+def test_session_local(test_engine):
+    return sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
 
+
+@pytest.fixture(scope="session", autouse=True)
+def _override_db(test_session_local):
+    """用依赖注入覆盖正式 get_db，使所有测试请求走临时数据库。"""
     def _get_test_db():
         db = test_session_local()
         try:

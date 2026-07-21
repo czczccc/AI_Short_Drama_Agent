@@ -29,9 +29,10 @@ def test_story_outline_rejects_extra_fields() -> None:
         StoryOutline.model_validate(data)
 
 
-def test_story_outline_rejects_latin_letters_in_chinese_content() -> None:
+def test_story_outline_allows_common_abbreviations_in_chinese_content() -> None:
     data = valid_outline_data()
     data["title"] = "AI逆袭"
 
-    with pytest.raises(ValidationError):
-        StoryOutline.model_validate(data)
+    outline = StoryOutline.model_validate(data)
+
+    assert outline.title == "AI逆袭"

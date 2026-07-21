@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import Any
 
 from openai import OpenAI
@@ -10,6 +11,9 @@ from app.providers.llm.base import (
     LLMResponseValidationError,
     SchemaT,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class DeepSeekProvider:
@@ -72,4 +76,16 @@ class DeepSeekProvider:
         try:
             return output_schema.model_validate(data)
         except ValidationError as exc:
+            issues = [
+                {
+                    "location": ".".join(str(part) for part in error["loc"]),
+                    "type": error["type"],
+                }
+                for error in exc.errors(
+                    include_url=False,
+                    include_context=False,
+                    include_input=False,
+                )
+            ]
+            logger.warning("LLM response schema validation failed: issues=%s", issues)
             raise LLMResponseValidationError("LLM 返回内容未通过结构校验") from exc

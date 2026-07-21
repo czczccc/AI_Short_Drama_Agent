@@ -15,8 +15,6 @@ def validate_chinese_text(value: str) -> str:
     value = value.strip()
     if not re.search(r"[\u3400-\u9fff]", value):
         raise ValueError("文本内容必须使用中文")
-    if re.search(r"[A-Za-z]", value):
-        raise ValueError("中文内容字段不能包含英文字母")
     return value
 
 

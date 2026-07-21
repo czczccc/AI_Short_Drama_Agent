@@ -1,3 +1,4 @@
+import logging
 from types import SimpleNamespace
 
 import pytest
@@ -68,11 +69,12 @@ def test_deepseek_provider_converts_invalid_json_to_clean_error() -> None:
         provider.generate_structured("输出JSON", "生成大纲", StoryOutline)
 
 
-def test_deepseek_provider_converts_schema_error_to_clean_error() -> None:
+def test_deepseek_provider_logs_only_safe_schema_error_metadata(caplog) -> None:
     import json
 
     invalid = valid_outline_data()
     invalid["episodes"] = invalid["episodes"][:-1]
+    invalid["title"] = "不可泄露的原始标题"
     client, _ = make_client(json.dumps(invalid))
     provider = DeepSeekProvider(
         api_key="test-key",
@@ -84,6 +86,12 @@ def test_deepseek_provider_converts_schema_error_to_clean_error() -> None:
         client=client,
     )
 
+    caplog.set_level(logging.WARNING)
+
     with pytest.raises(LLMResponseValidationError):
         provider.generate_structured("输出JSON", "生成大纲", StoryOutline)
 
+    assert "episodes" in caplog.text
+    assert "too_short" in caplog.text
+    assert "不可泄露的原始标题" not in caplog.text
+    assert "test-key" not in caplog.text

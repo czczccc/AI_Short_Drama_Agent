@@ -91,7 +91,7 @@ def test_generate_outline_maps_provider_failures(client: TestClient) -> None:
 
 
 def test_formal_database_is_not_used_by_tests(formal_db_snapshot: str | None) -> None:
-    formal_db = Path("app.db")
+    formal_db = Path("data/app.db")
     current_digest = (
         hashlib.sha256(formal_db.read_bytes()).hexdigest()
         if formal_db.exists()

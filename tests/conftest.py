@@ -1,7 +1,7 @@
 """Pytest 公共配置：测试数据库隔离。
 
 测试使用独立的临时 SQLite 数据库，通过 FastAPI 依赖注入覆盖正式数据库会话，
-不读取也不写入正式 app.db。测试会话结束后临时库自动删除。
+不读取也不写入正式 data/app.db。测试会话结束后临时库自动删除。
 """
 import hashlib
 import shutil
@@ -28,7 +28,7 @@ def _file_digest(path: Path) -> str | None:
 @pytest.fixture(scope="session")
 def formal_db_snapshot() -> str | None:
     """记录正式数据库内容，用于证明测试过程没有改写它。"""
-    formal_db = Path("app.db")
+    formal_db = Path("data/app.db")
     snapshot = _file_digest(formal_db)
     yield snapshot
     assert _file_digest(formal_db) == snapshot
@@ -71,5 +71,5 @@ def _override_db(test_session_local):
 
 @pytest.fixture(scope="session")
 def client(_override_db) -> TestClient:
-    """共享的 FastAPI 测试客户端（不触发 lifespan，不触碰正式 app.db）。"""
+    """共享的 FastAPI 测试客户端（不触发 lifespan，不触碰正式 data/app.db）。"""
     return TestClient(app)

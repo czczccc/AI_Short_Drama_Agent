@@ -30,6 +30,7 @@ AI 短剧生产系统：从创意输入到视频成片形成自动化工作流�
 - `app/providers/llm` —— 通用 LLM Provider 与 DeepSeek 适配器
 - `app/agents` —— Director Agent
 - `app/prompts` —— 版本化 Prompt
+- `data/` —— 本地 SQLite 数据库和数据库备份
 - `tests/` —— 测试
 - `docs/` —— 产品与设计文档
 
@@ -51,7 +52,7 @@ AI 短剧生产系统：从创意输入到视频成片形成自动化工作流�
    copy .env.example .env
    ```
 
-3. 启动服务（首次启动会自动创建 SQLite 数据库 `app.db`）
+3. 启动服务（首次启动会自动创建 SQLite 数据库 `data/app.db`）
 
    ```powershell
    uvicorn app.api.main:app --reload
@@ -92,11 +93,11 @@ Invoke-RestMethod -Method Post `
 Phase 2A 直接给 `Project` 增加字段，没有引入 Alembic。已有开发库需要在服务停止后重建；如有需要请先自行备份：
 
 ```powershell
-Remove-Item -LiteralPath .\app.db
+Remove-Item -LiteralPath .\data\app.db
 uvicorn app.api.main:app --reload
 ```
 
-应用启动时会重新创建 `app.db`。测试始终使用临时 SQLite 数据库，不会写入正式 `app.db`。
+应用启动时会重新创建 `data/app.db`。测试始终使用临时 SQLite 数据库，不会写入正式数据库。
 
 ## 运行测试
 

@@ -60,8 +60,12 @@ AI 短剧生产系统：从创意输入到视频成片形成自动化工作流�
 
 4. 验证
 
-   - 健康检查： http://127.0.0.1:8000/health
+   - API 基础地址： http://127.0.0.1:8000/api/v1
+   - 健康检查： http://127.0.0.1:8000/api/v1/health
    - 交互式 API 文档： http://127.0.0.1:8000/docs
+   - OpenAPI JSON： http://127.0.0.1:8000/openapi.json
+
+独立前端允许访问的来源由 `.env` 中的 `CORS_ALLOWED_ORIGINS` 配置。开发环境默认示例包含本机 `3000` 和 `5173` 端口；生产环境应替换为实际前端域名，不要使用 `*`。
 
 ## Phase 2A：生成 10 集大纲
 
@@ -69,7 +73,7 @@ AI 短剧生产系统：从创意输入到视频成片形成自动化工作流�
 
 ```powershell
 $project = Invoke-RestMethod -Method Post `
-  -Uri "http://127.0.0.1:8000/projects" `
+  -Uri "http://127.0.0.1:8000/api/v1/projects" `
   -ContentType "application/json" `
   -Body (@{ name = "逆袭程序员" } | ConvertTo-Json)
 ```
@@ -83,7 +87,7 @@ $body = @{
 } | ConvertTo-Json
 
 Invoke-RestMethod -Method Post `
-  -Uri "http://127.0.0.1:8000/projects/$($project.id)/outline" `
+  -Uri "http://127.0.0.1:8000/api/v1/projects/$($project.id)/outline" `
   -ContentType "application/json" `
   -Body $body
 ```
@@ -107,4 +111,4 @@ uvicorn app.api.main:app --reload
 
 ## 文档
 
-完整产品与设计文档见 `docs/` 目录（PRD、ARCHITECTURE、TASKS 等）。
+前端调用契约见 `docs/01_architecture/API.md`；其他产品与设计文档见 `docs/` 目录。

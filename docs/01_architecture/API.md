@@ -1,15 +1,108 @@
-# API设计
+# 后端 API
 
-POST /projects
+## 基本信息
 
-创建项目
+- 开发环境基础地址：`http://127.0.0.1:8000/api/v1`
+- 请求和响应格式：`application/json`
+- Swagger UI：`http://127.0.0.1:8000/docs`
+- OpenAPI JSON：`http://127.0.0.1:8000/openapi.json`
 
+所有正式接口统一使用 `/api/v1`。旧的无版本路径暂时保留用于兼容，但不会显示在 OpenAPI 文档中，独立前端不应继续使用旧路径。
 
-POST /projects/{project_id}/outline
+## 错误格式
 
-生成大纲
+后端主动返回的业务错误使用：
 
-请求：
+```json
+{
+  "detail": "Project not found"
+}
+```
+
+请求参数未通过 Pydantic 校验时返回 FastAPI 标准 `422` JSON，其中 `detail` 为校验问题数组。服务端不会向前端返回 API Key、上游原始响应或异常调用栈。
+
+常见状态码：
+
+- `404`：资源不存在
+- `409`：业务前置状态不满足
+- `422`：请求参数错误
+- `500`：数据库或服务器内部错误
+- `502`：LLM 调用、JSON 解析或 Schema 校验失败
+- `503`：LLM Provider 或 API Key 配置不可用
+
+## 健康检查
+
+### `GET /api/v1/health`
+
+请求示例：
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/health"
+```
+
+响应示例：
+
+```json
+{
+  "status": "ok"
+}
+```
+
+## 创建项目
+
+### `POST /api/v1/projects`
+
+请求示例：
+
+```json
+{
+  "name": "逆袭程序员"
+}
+```
+
+响应：`201 Created`
+
+```json
+{
+  "id": 1,
+  "name": "逆袭程序员",
+  "status": "draft",
+  "created_at": "2026-07-22T10:00:00",
+  "updated_at": "2026-07-22T10:00:00"
+}
+```
+
+`name` 会去除首尾空格，长度必须为 1 到 200 个字符，额外字段会返回 `422`。
+
+## 查询项目
+
+### `GET /api/v1/projects/{project_id}`
+
+请求示例：
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/1"
+```
+
+响应示例：
+
+```json
+{
+  "id": 1,
+  "name": "逆袭程序员",
+  "status": "outline_ready",
+  "created_at": "2026-07-22T10:00:00",
+  "updated_at": "2026-07-22T10:01:00"
+}
+```
+
+项目不存在时返回 `404`。
+
+## 生成故事大纲
+
+### `POST /api/v1/projects/{project_id}/outline`
+
+请求示例：
 
 ```json
 {
@@ -18,7 +111,7 @@ POST /projects/{project_id}/outline
 }
 ```
 
-成功响应结构节选（实际响应包含 3 到 6 个角色对象和正好 10 个分集对象）：
+响应示例（角色和分集数组仅节选；实际为 3–6 个角色和正好 10 集）：
 
 ```json
 {
@@ -58,21 +151,11 @@ POST /projects/{project_id}/outline
 }
 ```
 
-错误状态：
+## 生成并保存单集剧本
 
-- `404`：项目不存在
-- `422`：请求参数错误
-- `502`：LLM 调用、JSON 解析或 Schema 校验失败
-- `503`：Provider 或 API Key 配置不可用
+### `POST /api/v1/projects/{project_id}/episodes/{episode_number}/script`
 
-错误响应只包含清理后的 `detail`，不返回凭据、请求头、原始响应、上游完整异常或调用栈。
-
-
-POST /projects/{project_id}/episodes/{episode_number}/script
-
-生成并保存指定单集剧本。
-
-请求：
+请求示例：
 
 ```json
 {
@@ -80,7 +163,7 @@ POST /projects/{project_id}/episodes/{episode_number}/script
 }
 ```
 
-成功响应结构节选：
+响应示例（`scenes` 仅节选；实际包含 3–8 场）：
 
 ```json
 {
@@ -93,38 +176,45 @@ POST /projects/{project_id}/episodes/{episode_number}/script
     "duration_seconds": 90,
     "episode_goal": "林峰必须抢在高启之前取得服务器证据。",
     "opening_hook": "林峰的电脑突然开始远程自毁。",
-    "scenes": [],
+    "scenes": [
+      {
+        "scene_number": 1,
+        "location": "人工智能公司机房",
+        "time_of_day": "深夜",
+        "characters": ["lin_feng"],
+        "scene_goal": "林峰发现服务器正在销毁证据。",
+        "action": "红色警报闪烁，林峰冲到服务器前插入硬盘。",
+        "dialogues": [
+          {
+            "character_id": "lin_feng",
+            "character_name": "林峰",
+            "emotion": "急促",
+            "line": "只剩十秒，必须拿到证据！",
+            "action_note": "手指飞快敲击键盘。"
+          }
+        ],
+        "transition": "画面切向不断缩短的倒计时。"
+      }
+    ],
     "ending_hook": "硬盘上的定位灯突然亮起。"
   }
 }
 ```
 
-实际 `scenes` 包含 3 到 8 个完整 `SceneScript` 对象。
+项目必须已有有效大纲；同一集重新生成会覆盖该集旧剧本，不影响其他集。
 
-错误状态：
+## 查询已保存的单集剧本
 
-- `404`：项目或指定分集不存在
-- `409`：项目尚无有效大纲
-- `422`：目标时长等请求参数错误
-- `502`：Provider 调用、JSON 解析或剧本 Schema 校验失败
-- `503`：Provider 或 API Key 配置不可用
+### `GET /api/v1/projects/{project_id}/episodes/{episode_number}/script`
 
+请求示例：
 
-GET /projects/{project_id}/episodes/{episode_number}/script
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/1/episodes/1/script"
+```
 
-查询已保存的指定单集剧本。项目或剧本不存在时返回 `404`，项目无有效大纲时返回 `409`。
+成功响应与生成剧本接口的响应结构相同。项目、分集或剧本不存在时返回 `404`；项目没有有效大纲时返回 `409`。
 
+## 当前未提供的接口
 
-POST /episodes/{id}/storyboard
-
-生成分镜
-
-
-POST /shots/{id}/generate
-
-生成视频
-
-
-GET /tasks/{id}
-
-查询任务状态
+当前业务尚未实现项目列表、项目更新、项目删除、Storyboard、视频生成和任务队列，因此 `/api/v1` 不提供这些接口。

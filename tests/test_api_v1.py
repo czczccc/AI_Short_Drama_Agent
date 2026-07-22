@@ -85,6 +85,26 @@ def test_openapi_publishes_only_canonical_v1_routes(client: TestClient) -> None:
     assert "/health" not in paths
 
 
+def test_openapi_documents_common_error_responses(client: TestClient) -> None:
+    paths = client.get("/openapi.json").json()["paths"]
+
+    project_create = paths[f"{API_PREFIX}/projects"]["post"]["responses"]
+    project_read = paths[f"{API_PREFIX}/projects/{{project_id}}"]["get"]["responses"]
+    outline_create = paths[f"{API_PREFIX}/projects/{{project_id}}/outline"]["post"][
+        "responses"
+    ]
+    script_create = paths[
+        f"{API_PREFIX}/projects/{{project_id}}/episodes/{{episode_number}}/script"
+    ]["post"]["responses"]
+
+    assert {"201", "422", "500"} <= set(project_create)
+    assert {"200", "404", "422", "500"} <= set(project_read)
+    assert {"200", "404", "422", "500", "502", "503"} <= set(outline_create)
+    assert {"200", "404", "409", "422", "500", "502", "503"} <= set(
+        script_create
+    )
+
+
 def test_cors_allows_configured_local_frontend(client: TestClient) -> None:
     response = client.options(
         f"{API_PREFIX}/projects",

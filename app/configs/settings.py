@@ -10,7 +10,6 @@ class Settings(BaseSettings):
     app_name: str = "AI Short Drama Agent"
     app_env: str = "development"
     debug: bool = True
-    api_v1_prefix: str = "/api/v1"
     cors_allowed_origins: list[str] = Field(
         default_factory=lambda: [
             "http://localhost:3000",

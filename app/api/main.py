@@ -16,6 +16,7 @@ from app.providers.llm.base import (
 )
 
 settings = get_settings()
+API_V1_PREFIX = "/api/v1"
 
 
 @asynccontextmanager
@@ -88,7 +89,7 @@ async def handle_database_error(
     )
 
 
-@app.get(f"{settings.api_v1_prefix}/health", tags=["health"])
+@app.get(f"{API_V1_PREFIX}/health", tags=["health"])
 def health_check() -> dict:
     return {"status": "ok"}
 
@@ -98,7 +99,7 @@ def legacy_health_check() -> dict:
     return health_check()
 
 
-api_v1_router = APIRouter(prefix=settings.api_v1_prefix)
+api_v1_router = APIRouter(prefix=API_V1_PREFIX)
 api_v1_router.include_router(projects.router)
 api_v1_router.include_router(outlines.router)
 api_v1_router.include_router(scripts.router)

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.database.session import get_db
 from app.providers.llm.base import LLMProvider
 from app.providers.llm.factory import get_configured_llm_provider
+from app.schemas.common import ErrorResponse
 from app.schemas.script import ScriptGenerateRequest, ScriptResponse
 from app.services.outline_service import ProjectNotFoundError
 from app.services.script_service import (
@@ -38,6 +39,13 @@ def _raise_script_http_error(exc: Exception) -> None:
 @router.post(
     "/{project_id}/episodes/{episode_number}/script",
     response_model=ScriptResponse,
+    responses={
+        404: {"model": ErrorResponse, "description": "项目或分集不存在"},
+        409: {"model": ErrorResponse, "description": "项目大纲尚未就绪"},
+        500: {"model": ErrorResponse, "description": "数据库操作失败"},
+        502: {"model": ErrorResponse, "description": "LLM 调用或响应无效"},
+        503: {"model": ErrorResponse, "description": "LLM Provider 配置不可用"},
+    },
 )
 def create_script(
     project_id: int,
@@ -65,6 +73,11 @@ def create_script(
 @router.get(
     "/{project_id}/episodes/{episode_number}/script",
     response_model=ScriptResponse,
+    responses={
+        404: {"model": ErrorResponse, "description": "项目、分集或剧本不存在"},
+        409: {"model": ErrorResponse, "description": "项目大纲尚未就绪"},
+        500: {"model": ErrorResponse, "description": "数据库操作失败"},
+    },
 )
 def read_script(
     project_id: int,

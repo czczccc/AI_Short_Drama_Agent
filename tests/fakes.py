@@ -100,6 +100,56 @@ def valid_script_data(
     }
 
 
+def valid_character_bibles_data() -> dict:
+    concepts = valid_outline_data()["characters"]
+    target_ids = {
+        "lin_feng": "su_yan",
+        "su_yan": "gao_qi",
+        "gao_qi": "lin_feng",
+    }
+    return {
+        concept["character_id"]: {
+            "character_id": concept["character_id"],
+            "name": concept["name"],
+            "role": concept["role"],
+            "age": concept["age"],
+            "background": f"{concept['name']}长期身处人工智能行业核心冲突之中。",
+            "appearance": concept["appearance"],
+            "personality": concept["personality"],
+            "motivation": concept["motivation"],
+            "fear": "害怕关键真相被永久掩盖。",
+            "secret": concept["secret"],
+            "speech_style": "说话简短克制，面对压力时仍保持清晰判断。",
+            "behavior_patterns": ["遇到冲突先观察证据，再采取行动。"],
+            "emotional_triggers": ["发现重要证据被恶意销毁时会明显愤怒。"],
+            "behavior_boundaries": ["不会为了胜利主动伤害无辜者。"],
+            "relationships": [
+                {
+                    "target_character_id": target_ids[concept["character_id"]],
+                    "relationship_type": "剧情关键关系",
+                    "public_attitude": "公开保持克制和必要距离。",
+                    "private_attitude": "内心持续评估对方是否值得信任。",
+                    "conflict": "双方对真相和利益的选择存在直接冲突。",
+                }
+            ],
+            "character_arc": "从独自承担压力逐步学会信任同伴并直面真相。",
+            "visual_identity": {
+                "face_features": "面部轮廓清晰，目光具有辨识度。",
+                "hair": "保持利落整洁的日常发型。",
+                "body_type": "身形匀称，动作干练。",
+                "default_costume": "默认穿深色简洁职业装。",
+                "signature_colors": "以深蓝和灰色作为主要识别色。",
+                "signature_props": "随身携带具有剧情意义的旧机械表。",
+            },
+            "continuity_rules": {
+                "must_keep": ["始终保持核心动机和表达方式一致。"],
+                "must_avoid": ["不使用与人物身份不符的网络流行语。"],
+            },
+        }
+        for concept in concepts
+    }
+
+
 class FakeLLMProvider:
     def __init__(
         self,

@@ -19,6 +19,7 @@ class Project(Base):
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="draft")
     idea: Mapped[str | None] = mapped_column(Text, nullable=True)
     outline_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    characters_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     scripts_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=utcnow

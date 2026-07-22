@@ -1,14 +1,32 @@
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.agents.director import DirectorAgent
 from app.models.project import Project
 from app.providers.llm.base import LLMProvider
-from app.schemas.outline import OutlineGenerateRequest, OutlineGenerateResponse
+from app.schemas.outline import (
+    OutlineGenerateRequest,
+    OutlineGenerateResponse,
+    StoryOutline,
+)
 from app.services.project_service import get_project
 
 
 class ProjectNotFoundError(Exception):
     """Requested project does not exist."""
+
+
+class OutlineNotReadyError(Exception):
+    """Project has no valid outline yet."""
+
+
+def load_outline(project: Project) -> StoryOutline:
+    if not project.outline_json:
+        raise OutlineNotReadyError
+    try:
+        return StoryOutline.model_validate_json(project.outline_json)
+    except (ValidationError, ValueError) as exc:
+        raise OutlineNotReadyError from exc
 
 
 def generate_outline(

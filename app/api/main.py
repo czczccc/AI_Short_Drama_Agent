@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api import outlines, projects, scripts
+from app.api import characters, outlines, projects, scripts
 from app.configs.settings import get_settings
 from app.database.session import init_db
 from app.providers.llm.base import (
@@ -102,10 +102,12 @@ def legacy_health_check() -> dict:
 api_v1_router = APIRouter(prefix=API_V1_PREFIX)
 api_v1_router.include_router(projects.router)
 api_v1_router.include_router(outlines.router)
+api_v1_router.include_router(characters.router)
 api_v1_router.include_router(scripts.router)
 app.include_router(api_v1_router)
 
 # 暂时保留旧路径，避免已有调用方立即中断；正式 OpenAPI 只公布 /api/v1。
 app.include_router(projects.router, include_in_schema=False)
 app.include_router(outlines.router, include_in_schema=False)
+app.include_router(characters.router, include_in_schema=False)
 app.include_router(scripts.router, include_in_schema=False)

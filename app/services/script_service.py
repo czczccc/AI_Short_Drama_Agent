@@ -1,6 +1,5 @@
 import json
 
-from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.agents.writer import WriterAgent
@@ -8,12 +7,12 @@ from app.models.project import Project
 from app.providers.llm.base import LLMProvider
 from app.schemas.outline import EpisodeOutline, StoryOutline
 from app.schemas.script import EpisodeScript, ScriptGenerateRequest, ScriptResponse
-from app.services.outline_service import ProjectNotFoundError
+from app.services.outline_service import (
+    OutlineNotReadyError,
+    ProjectNotFoundError,
+    load_outline,
+)
 from app.services.project_service import get_project
-
-
-class OutlineNotReadyError(Exception):
-    """Project has no valid outline yet."""
 
 
 class EpisodeNotFoundError(Exception):
@@ -22,15 +21,6 @@ class EpisodeNotFoundError(Exception):
 
 class ScriptNotFoundError(Exception):
     """Requested episode script has not been generated."""
-
-
-def _load_outline(project: Project) -> StoryOutline:
-    if not project.outline_json:
-        raise OutlineNotReadyError
-    try:
-        return StoryOutline.model_validate_json(project.outline_json)
-    except (ValidationError, ValueError) as exc:
-        raise OutlineNotReadyError from exc
 
 
 def _find_episode(outline: StoryOutline, episode_number: int) -> EpisodeOutline:
@@ -58,7 +48,7 @@ def generate_script(
     if project is None:
         raise ProjectNotFoundError
 
-    outline = _load_outline(project)
+    outline = load_outline(project)
     episode_outline = _find_episode(outline, episode_number)
     script = WriterAgent(llm_provider).generate_script(
         story_outline=outline,
@@ -86,7 +76,7 @@ def get_script(db: Session, project_id: int, episode_number: int) -> ScriptRespo
     if project is None:
         raise ProjectNotFoundError
 
-    outline = _load_outline(project)
+    outline = load_outline(project)
     episode_outline = _find_episode(outline, episode_number)
     scripts = json.loads(project.scripts_json) if project.scripts_json else {}
     stored_script = scripts.get(str(episode_number))

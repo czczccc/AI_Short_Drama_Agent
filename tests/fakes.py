@@ -2,6 +2,7 @@ from typing import TypeVar
 
 from pydantic import BaseModel
 
+from app.schemas.character import CharacterBible, CharacterBibleCollection
 from app.schemas.outline import StoryOutline
 from app.schemas.script import EpisodeScript
 
@@ -156,10 +157,12 @@ class FakeLLMProvider:
         script_episode_number: int = 1,
         script_title: str | None = None,
         script_character_id: str = "lin_feng",
+        character_mode: str = "valid",
     ) -> None:
         self.script_episode_number = script_episode_number
         self.script_title = script_title
         self.script_character_id = script_character_id
+        self.character_mode = character_mode
 
     def generate_structured(
         self,
@@ -171,6 +174,23 @@ class FakeLLMProvider:
         assert user_prompt.strip()
         if output_schema is StoryOutline:
             return output_schema.model_validate(valid_outline_data())
+        if output_schema is CharacterBibleCollection:
+            characters = valid_character_bibles_data()
+            if self.character_mode == "add":
+                characters["new_person"] = {
+                    **characters["lin_feng"],
+                    "character_id": "new_person",
+                    "name": "新增人物",
+                }
+            if self.character_mode == "drop":
+                characters.pop("gao_qi")
+                return output_schema.model_construct(
+                    characters={
+                        character_id: CharacterBible.model_validate(bible)
+                        for character_id, bible in characters.items()
+                    }
+                )
+            return output_schema.model_validate({"characters": characters})
         if output_schema is EpisodeScript:
             return output_schema.model_validate(
                 valid_script_data(

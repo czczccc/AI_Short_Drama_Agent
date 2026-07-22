@@ -8,10 +8,9 @@ from app.providers.llm.base import LLMProvider
 from app.providers.llm.factory import get_configured_llm_provider
 from app.schemas.common import ErrorResponse
 from app.schemas.script import ScriptGenerateRequest, ScriptResponse
-from app.services.outline_service import ProjectNotFoundError
+from app.services.outline_service import OutlineNotReadyError, ProjectNotFoundError
 from app.services.script_service import (
     EpisodeNotFoundError,
-    OutlineNotReadyError,
     ScriptNotFoundError,
     generate_script,
     get_script,

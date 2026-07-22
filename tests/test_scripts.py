@@ -165,3 +165,46 @@ def test_generate_script_rejects_invalid_duration(client: TestClient) -> None:
         json={"target_duration_seconds": 30},
     )
     assert response.status_code == 422
+
+
+def test_writer_uses_character_bibles_when_available(client: TestClient) -> None:
+    project_id = create_outline_ready_project(client)
+    app.dependency_overrides[get_configured_llm_provider] = FakeLLMProvider
+    characters = client.post(
+        f"/projects/{project_id}/characters/generate",
+        json={},
+    )
+    assert characters.status_code == 200
+
+    writer_provider = FakeLLMProvider()
+    response = generate_script(
+        client,
+        project_id,
+        provider=lambda: writer_provider,
+    )
+
+    assert response.status_code == 200
+    writer_input = json.loads(writer_provider.last_user_prompt)
+    assert writer_input["character_source"] == "character_bible"
+    assert all("speech_style" in character for character in writer_input["characters"])
+    assert all(
+        "continuity_rules" in character for character in writer_input["characters"]
+    )
+
+
+def test_writer_falls_back_to_outline_characters_when_bibles_are_absent(
+    client: TestClient,
+) -> None:
+    project_id = create_outline_ready_project(client)
+    writer_provider = FakeLLMProvider()
+
+    response = generate_script(
+        client,
+        project_id,
+        provider=lambda: writer_provider,
+    )
+
+    assert response.status_code == 200
+    writer_input = json.loads(writer_provider.last_user_prompt)
+    assert writer_input["character_source"] == "outline"
+    assert all("speech_style" not in character for character in writer_input["characters"])

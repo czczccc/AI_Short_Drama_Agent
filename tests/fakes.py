@@ -163,6 +163,7 @@ class FakeLLMProvider:
         self.script_title = script_title
         self.script_character_id = script_character_id
         self.character_mode = character_mode
+        self.last_user_prompt: str | None = None
 
     def generate_structured(
         self,
@@ -172,6 +173,7 @@ class FakeLLMProvider:
     ) -> SchemaT:
         assert "JSON" in system_prompt
         assert user_prompt.strip()
+        self.last_user_prompt = user_prompt
         if output_schema is StoryOutline:
             return output_schema.model_validate(valid_outline_data())
         if output_schema is CharacterBibleCollection:

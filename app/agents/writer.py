@@ -5,6 +5,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from app.providers.llm.base import LLMProvider, LLMResponseValidationError
+from app.schemas.character import CharacterBible
 from app.schemas.outline import EpisodeOutline, StoryOutline
 from app.schemas.script import EpisodeScript
 
@@ -23,13 +24,22 @@ class WriterAgent:
         story_outline: StoryOutline,
         episode_outline: EpisodeOutline,
         target_duration_seconds: int,
+        character_bibles: dict[str, CharacterBible] | None = None,
     ) -> EpisodeScript:
-        input_data = {
-            "story_outline": story_outline.model_dump(mode="json"),
-            "characters": [
+        characters = (
+            [bible.model_dump(mode="json") for bible in character_bibles.values()]
+            if character_bibles is not None
+            else [
                 character.model_dump(mode="json")
                 for character in story_outline.characters
-            ],
+            ]
+        )
+        input_data = {
+            "story_outline": story_outline.model_dump(mode="json"),
+            "character_source": (
+                "character_bible" if character_bibles is not None else "outline"
+            ),
+            "characters": characters,
             "episode_outline": episode_outline.model_dump(mode="json"),
             "target_duration_seconds": target_duration_seconds,
         }

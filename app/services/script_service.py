@@ -7,6 +7,7 @@ from app.models.project import Project
 from app.providers.llm.base import LLMProvider
 from app.schemas.outline import EpisodeOutline, StoryOutline
 from app.schemas.script import EpisodeScript, ScriptGenerateRequest, ScriptResponse
+from app.services.character_service import load_character_bibles
 from app.services.outline_service import (
     OutlineNotReadyError,
     ProjectNotFoundError,
@@ -50,10 +51,14 @@ def generate_script(
 
     outline = load_outline(project)
     episode_outline = _find_episode(outline, episode_number)
+    character_collection = load_character_bibles(project, outline)
     script = WriterAgent(llm_provider).generate_script(
         story_outline=outline,
         episode_outline=episode_outline,
         target_duration_seconds=data.target_duration_seconds,
+        character_bibles=(
+            character_collection.characters if character_collection else None
+        ),
     )
 
     scripts = json.loads(project.scripts_json) if project.scripts_json else {}

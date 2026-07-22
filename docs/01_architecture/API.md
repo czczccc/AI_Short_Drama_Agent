@@ -151,6 +151,134 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/1"
 }
 ```
 
+## 生成角色圣经
+
+### `POST /api/v1/projects/{project_id}/characters/generate`
+
+Character Agent 一次生成项目大纲中的全部主要角色，不会逐角色调用模型。重新生成会整体覆盖旧角色圣经。
+
+请求示例：
+
+```json
+{}
+```
+
+响应示例（仅展示一个角色；实际返回与大纲完全一致的 3–6 个角色）：
+
+```json
+{
+  "project_id": 1,
+  "status": "characters_ready",
+  "characters": {
+    "lin_feng": {
+      "character_id": "lin_feng",
+      "name": "林峰",
+      "role": "男主角",
+      "age": "二十八岁",
+      "background": "曾是人工智能公司的核心程序员，因拒绝配合数据造假而被排挤。",
+      "appearance": "清瘦干练，眼神克制，常保持警觉。",
+      "personality": "冷静执着，习惯用证据而不是情绪做判断。",
+      "motivation": "夺回被窃取的成果并证明清白。",
+      "fear": "害怕证据消失后再也无人能够证明真相。",
+      "secret": "保留了算法最早的离线记录。",
+      "speech_style": "句子短而直接，极少使用夸张表达。",
+      "behavior_patterns": ["进入陌生环境时先观察出口和监控位置。"],
+      "emotional_triggers": ["发现技术成果被篡改时会明显愤怒。"],
+      "behavior_boundaries": ["不会伪造证据，也不会主动伤害无辜者。"],
+      "relationships": [
+        {
+          "target_character_id": "su_yan",
+          "relationship_type": "调查盟友",
+          "public_attitude": "保持专业距离，不轻易表达信任。",
+          "private_attitude": "认可她的正直，但担心把她卷入危险。",
+          "conflict": "林峰重视证据安全，苏妍更愿意立即公开真相。"
+        }
+      ],
+      "character_arc": "从独自承担一切，逐渐学会信任同伴并公开面对过去。",
+      "visual_identity": {
+        "face_features": "面部线条清晰，眼下有轻微疲态。",
+        "hair": "黑色短发，日常整理简单。",
+        "body_type": "清瘦匀称，动作快速克制。",
+        "default_costume": "深色旧夹克搭配简单衬衫。",
+        "signature_colors": "深蓝、灰黑。",
+        "signature_props": "左手佩戴一块旧机械表。"
+      },
+      "continuity_rules": {
+        "must_keep": ["始终使用冷静克制的表达方式。"],
+        "must_avoid": ["不使用网络流行语。"]
+      }
+    }
+  }
+}
+```
+
+错误状态：项目不存在返回 `404`；项目无有效大纲返回 `409`；LLM 调用或输出无效返回 `502`；Provider 配置不可用返回 `503`。
+
+## 查询角色圣经
+
+### `GET /api/v1/projects/{project_id}/characters`
+
+请求示例：
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/1/characters"
+```
+
+成功响应结构与“生成角色圣经”的响应示例相同。项目或角色圣经不存在返回 `404`，项目无有效大纲返回 `409`。
+
+## 整体替换角色圣经
+
+### `PUT /api/v1/projects/{project_id}/characters`
+
+请求体必须提交完整 `characters` 对象，结构与生成接口响应中的 `characters` 字段一致：
+
+```json
+{
+  "characters": {
+    "lin_feng": {
+      "character_id": "lin_feng",
+      "name": "林峰",
+      "role": "男主角",
+      "age": "二十八岁",
+      "background": "人工智能公司的前核心程序员。",
+      "appearance": "清瘦干练，眼神克制。",
+      "personality": "冷静执着，重视证据。",
+      "motivation": "夺回成果并证明清白。",
+      "fear": "害怕真相被永久掩盖。",
+      "secret": "保留了算法最早的离线记录。",
+      "speech_style": "说话简短冷静，不使用网络流行语。",
+      "behavior_patterns": ["行动前先确认关键证据。"],
+      "emotional_triggers": ["证据遭到恶意销毁。"],
+      "behavior_boundaries": ["不会伪造证据。"],
+      "relationships": [
+        {
+          "target_character_id": "su_yan",
+          "relationship_type": "调查盟友",
+          "public_attitude": "保持专业距离。",
+          "private_attitude": "逐渐建立信任。",
+          "conflict": "对公开证据的时机存在分歧。"
+        }
+      ],
+      "character_arc": "逐渐学会信任同伴。",
+      "visual_identity": {
+        "face_features": "面部线条清晰。",
+        "hair": "黑色短发。",
+        "body_type": "清瘦匀称。",
+        "default_costume": "深色旧夹克。",
+        "signature_colors": "深蓝、灰黑。",
+        "signature_props": "左手佩戴旧机械表。"
+      },
+      "continuity_rules": {
+        "must_keep": ["保持冷静克制。"],
+        "must_avoid": ["不使用网络流行语。"]
+      }
+    }
+  }
+}
+```
+
+实际请求必须包含大纲中的全部角色；上例为单角色结构节选。成功响应结构与生成接口相同。角色 ID 集合、身份字段或关系引用不合法时返回 `422`。
+
 ## 生成并保存单集剧本
 
 ### `POST /api/v1/projects/{project_id}/episodes/{episode_number}/script`

@@ -18,7 +18,9 @@
 - [x] Writer Agent
 - [x] 单集结构化剧本生成与 Pydantic 校验
 - [x] `scripts_json` 按集保存、覆盖与查询 API
-- [ ] Character Agent
+- [x] Character Agent
+- [x] 项目级角色圣经生成、校验与 `characters_json` 持久化
+- [x] 角色圣经查询、整体替换 API 与 Writer 优先读取
 
 
 ## Phase 3 视频

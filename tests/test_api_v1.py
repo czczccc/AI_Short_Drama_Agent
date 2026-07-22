@@ -77,6 +77,8 @@ def test_openapi_publishes_only_canonical_v1_routes(client: TestClient) -> None:
     assert f"{API_PREFIX}/health" in paths
     assert f"{API_PREFIX}/projects" in paths
     assert f"{API_PREFIX}/projects/{{project_id}}/outline" in paths
+    assert f"{API_PREFIX}/projects/{{project_id}}/characters" in paths
+    assert f"{API_PREFIX}/projects/{{project_id}}/characters/generate" in paths
     assert (
         f"{API_PREFIX}/projects/{{project_id}}/episodes/{{episode_number}}/script"
         in paths
@@ -116,6 +118,23 @@ def test_cors_allows_configured_local_frontend(client: TestClient) -> None:
 
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+
+def test_cors_allows_character_bible_put_from_local_frontend(
+    client: TestClient,
+) -> None:
+    response = client.options(
+        f"{API_PREFIX}/projects/1/characters",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "PUT",
+            "Access-Control-Request-Headers": "Content-Type",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+    assert "PUT" in response.headers["access-control-allow-methods"]
 
 
 def test_cors_does_not_allow_unconfigured_origin(client: TestClient) -> None:

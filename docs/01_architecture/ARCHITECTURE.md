@@ -33,6 +33,8 @@ draft
 
 outline_ready
 
+characters_ready
+
 script_ready
 
 storyboard_ready

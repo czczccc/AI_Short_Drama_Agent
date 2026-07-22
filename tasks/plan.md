@@ -16,25 +16,25 @@
 
 ### Foundation
 
-- [ ] 定义 Character Bible Schema 与跨角色校验
-- [ ] 给 Project 增加 `characters_json` 并兼容升级已有 SQLite
+- [x] 定义 Character Bible Schema 与跨角色校验
+- [x] 给 Project 增加 `characters_json` 并兼容升级已有 SQLite
 
 ### Character Workflow
 
-- [ ] 实现 Character Agent 和 `character_v1.md`
-- [ ] 实现生成、查询、整体替换 Service/API
-- [ ] 使用 FakeLLMProvider 覆盖成功与失败路径
+- [x] 实现 Character Agent 和 `character_v1.md`
+- [x] 实现生成、查询、整体替换 Service/API
+- [x] 使用 FakeLLMProvider 覆盖成功与失败路径
 
 ### Writer Integration
 
-- [ ] 有角色圣经时 Writer 优先使用
-- [ ] 无角色圣经时继续使用大纲角色概念
+- [x] 有角色圣经时 Writer 优先使用
+- [x] 无角色圣经时继续使用大纲角色概念
 
 ### Completion
 
-- [ ] 更新 API、数据模型、Prompt、工作流、任务和测试文档
-- [ ] 全量测试通过且正式数据库不被 pytest 污染
-- [ ] 有有效 Key 时仅真实生成一次角色圣经
+- [x] 更新 API、数据模型、Prompt、工作流、任务和测试文档
+- [x] 全量测试通过且正式数据库不被 pytest 污染
+- [x] 有有效 Key 时仅真实生成一次角色圣经
 
 ## Risks and Mitigations
 

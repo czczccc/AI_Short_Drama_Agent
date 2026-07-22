@@ -10,6 +10,8 @@ director
 
 writer
 
+character
+
 storyboard
 
 video_adapter
@@ -51,3 +53,13 @@ Phase 2B 使用 `app/prompts/writer_v1.md`。Prompt 要求：
 - 只使用大纲中的 `character_id`
 - 只输出合法 JSON，不包含 Markdown 或额外解释
 - 提供与 `EpisodeScript` 一致的完整 JSON 示例
+
+## Character v1
+
+Phase 2C 使用 `app/prompts/character_v1.md`。Prompt 要求：
+
+- 一次深化当前项目全部主要角色，不逐角色调用模型
+- 保持原 `character_id`、姓名、年龄和角色定位，不新增或删除角色
+- 输出可指导编剧和表演的说话方式、行为边界、关系、成长弧线和连续性规则
+- 视觉身份只保存文字描述，不生成图片或图像/视频 Prompt
+- 只输出合法 JSON，不包含 Markdown 或解释文字

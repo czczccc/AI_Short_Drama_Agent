@@ -21,6 +21,16 @@
 - 项目、大纲、分集、Provider 和 Schema 错误状态映射
 - pytest 使用 FakeLLMProvider 和临时 SQLite，不调用真实 DeepSeek、不污染正式 `app.db`
 
+## Phase 2C 自动测试
+
+- 角色数量、ID 集合及姓名/年龄/定位与大纲完全一致
+- 关系引用合法、不允许自引用，严格禁止额外字段
+- 角色圣经生成、`characters_json` 保存、查询和整体替换
+- 项目、大纲、Provider、模型输出和用户输入错误状态映射
+- Writer 优先读取角色圣经，无角色圣经时保持大纲角色回退
+- 已有 SQLite 项目表可幂等增加 `characters_json` 列
+- pytest 使用 FakeLLMProvider 和临时 SQLite，不调用真实 DeepSeek、不污染正式 `data/app.db`
+
 
 ## 集成测试
 

@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 from app.schemas.character import CharacterBible, CharacterBibleCollection
 from app.schemas.outline import StoryOutline
+from app.schemas.qc import QCReport
 from app.schemas.script import EpisodeScript
 
 
@@ -69,11 +70,12 @@ def valid_script_data(
     episode_number: int = 1,
     title: str | None = None,
     character_id: str = "lin_feng",
+    duration_seconds: int = 90,
 ) -> dict:
     return {
         "episode_number": episode_number,
         "title": title or f"第{episode_number}集AI证据争夺战",
-        "duration_seconds": 90,
+        "duration_seconds": duration_seconds,
         "episode_goal": "林峰必须抢在高启之前取得服务器证据。",
         "opening_hook": "开场五秒内，林峰的电脑突然开始远程自毁。",
         "scenes": [
@@ -151,18 +153,40 @@ def valid_character_bibles_data() -> dict:
     }
 
 
+def valid_qc_report_data(episode_number: int = 1) -> dict:
+    return {
+        "episode_number": episode_number,
+        "status": "warning",
+        "summary": "整体可用，但存在一个可能提前展开后续线索的问题。",
+        "issues": [
+            {
+                "episode_number": episode_number,
+                "severity": "warning",
+                "code": "future_boundary_risk",
+                "message": "剧本结尾可能提前揭示后续集才应确认的关键证据结果。",
+                "suggestion": "保留发现证据的悬念，不要在本集确认最终结论。",
+            }
+        ],
+    }
+
+
 class FakeLLMProvider:
     def __init__(
         self,
         script_episode_number: int = 1,
         script_title: str | None = None,
         script_character_id: str = "lin_feng",
+        script_duration_seconds: int = 90,
         character_mode: str = "valid",
+        script_dialogue_key: str = "dialogues",
     ) -> None:
         self.script_episode_number = script_episode_number
         self.script_title = script_title
         self.script_character_id = script_character_id
+        self.script_duration_seconds = script_duration_seconds
         self.character_mode = character_mode
+        self.script_dialogue_key = script_dialogue_key
+        self.last_system_prompt: str | None = None
         self.last_user_prompt: str | None = None
 
     def generate_structured(
@@ -173,6 +197,7 @@ class FakeLLMProvider:
     ) -> SchemaT:
         assert "JSON" in system_prompt
         assert user_prompt.strip()
+        self.last_system_prompt = system_prompt
         self.last_user_prompt = user_prompt
         if output_schema is StoryOutline:
             return output_schema.model_validate(valid_outline_data())
@@ -194,12 +219,19 @@ class FakeLLMProvider:
                 )
             return output_schema.model_validate({"characters": characters})
         if output_schema is EpisodeScript:
+            script_data = valid_script_data(
+                episode_number=self.script_episode_number,
+                title=self.script_title,
+                character_id=self.script_character_id,
+                duration_seconds=self.script_duration_seconds,
+            )
+            if self.script_dialogue_key == "dialogue":
+                for scene in script_data["scenes"]:
+                    scene["dialogue"] = scene.pop("dialogues")
+            return output_schema.model_validate(script_data)
+        if output_schema is QCReport:
             return output_schema.model_validate(
-                valid_script_data(
-                    episode_number=self.script_episode_number,
-                    title=self.script_title,
-                    character_id=self.script_character_id,
-                )
+                valid_qc_report_data(self.script_episode_number)
             )
         raise AssertionError(f"Unsupported output schema: {output_schema}")
 

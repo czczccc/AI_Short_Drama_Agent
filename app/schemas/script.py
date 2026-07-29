@@ -39,6 +39,17 @@ class SceneScript(StrictScriptModel):
     dialogues: list[DialogueLine]
     transition: ChineseText
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_llm_dialogue_key(cls, data: object) -> object:
+        if not isinstance(data, dict):
+            return data
+        if "dialogues" in data or "dialogue" not in data:
+            return data
+        normalized = dict(data)
+        normalized["dialogues"] = normalized.pop("dialogue")
+        return normalized
+
     @field_validator("action")
     @classmethod
     def validate_action(cls, value: str | None) -> str | None:
@@ -75,6 +86,13 @@ class EpisodeScript(StrictScriptModel):
             and self.episode_number != expected_episode_number
         ):
             raise ValueError("episode_number 与请求不一致")
+
+        target_duration_seconds = context.get("target_duration_seconds")
+        if (
+            target_duration_seconds is not None
+            and abs(self.duration_seconds - int(target_duration_seconds)) > 3
+        ):
+            raise ValueError("duration_seconds 与目标时长偏差超过 3 秒")
 
         allowed_character_ids = context.get("allowed_character_ids")
         if allowed_character_ids is not None:

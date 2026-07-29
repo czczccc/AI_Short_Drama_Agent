@@ -49,3 +49,14 @@ def test_scene_requires_action_or_dialogue() -> None:
 
     with pytest.raises(ValidationError):
         validate_script(data)
+
+
+def test_scene_accepts_singular_dialogue_key_from_llm_output() -> None:
+    data = valid_script_data()
+    for scene in data["scenes"]:
+        scene["dialogue"] = scene.pop("dialogues")
+
+    script = validate_script(data)
+
+    assert len(script.scenes[0].dialogues) == 1
+    assert script.scenes[0].dialogues[0].character_id == "lin_feng"

@@ -6,8 +6,10 @@
 - 请求和响应格式：`application/json`
 - Swagger UI：`http://127.0.0.1:8000/docs`
 - OpenAPI JSON：`http://127.0.0.1:8000/openapi.json`
+- 开发测试页：`http://127.0.0.1:8000/dev/testbench`
 
 所有正式接口统一使用 `/api/v1`。旧的无版本路径暂时保留用于兼容，但不会显示在 OpenAPI 文档中，独立前端不应继续使用旧路径。
+`/dev/testbench` 仅用于本地开发验证，不属于正式 API，也不会显示在 OpenAPI 文档中。该页面可通过开发辅助接口读取本地历史项目、已保存大纲、角色圣经、多集剧本和 Story Memory，用于人工检查工作流输出；也可以对当前已保存剧本触发一次 LLM QC v1，返回结构化质检报告但不修改剧本。
 
 ## 错误格式
 
@@ -343,6 +345,52 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/1/episodes/1/scrip
 
 成功响应与生成剧本接口的响应结构相同。项目、分集或剧本不存在时返回 `404`；项目没有有效大纲时返回 `409`。
 
+## 开发辅助：LLM QC v1
+
+以下接口只服务 `/dev/testbench` 本地验证，不属于正式 `/api/v1`，不会显示在 OpenAPI 文档中，独立前端不应依赖它作为产品接口。
+
+### `POST /dev/projects/{project_id}/episodes/{episode_number}/qc`
+
+对当前项目已保存的第 N 集剧本执行一次 LLM QC v1。该接口只返回结构化质检报告，不自动改写剧本、不覆盖 `scripts_json`，也不持久化 QC 结果。
+
+请求体：无。
+
+请求示例：
+
+```powershell
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/dev/projects/1/episodes/1/qc"
+```
+
+响应示例：
+
+```json
+{
+  "project_id": 1,
+  "episode_number": 1,
+  "report": {
+    "episode_number": 1,
+    "status": "warning",
+    "summary": "整体可用，但存在一个可能提前展开后续线索的问题。",
+    "issues": [
+      {
+        "episode_number": 1,
+        "severity": "warning",
+        "code": "future_boundary_risk",
+        "message": "剧本结尾可能提前揭示后续集才应确认的关键证据结果。",
+        "suggestion": "保留发现证据的悬念，不要在本集确认最终结论。"
+      }
+    ]
+  }
+}
+```
+
+常见错误：
+
+- `404`：项目、分集或已保存剧本不存在
+- `409`：项目大纲尚未就绪
+- `502`：LLM 调用、JSON 解析或 Schema 校验失败
+- `503`：LLM Provider 或 API Key 配置不可用
+
 ## 当前未提供的接口
 
-当前业务尚未实现项目列表、项目更新、项目删除、Storyboard、视频生成和任务队列，因此 `/api/v1` 不提供这些接口。
+当前业务尚未实现项目列表、项目更新、项目删除、Storyboard、视频生成和任务队列，因此 `/api/v1` 不提供这些接口。Phase 3-1 只完成了内部 Video Provider 抽象接口和 Fake Provider，不新增正式 HTTP API。

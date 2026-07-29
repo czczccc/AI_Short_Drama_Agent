@@ -1,0 +1,640 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Short Drama Testbench</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f8fa;
+      --panel: #ffffff;
+      --text: #172033;
+      --muted: #5d6878;
+      --border: #d8dee8;
+      --accent: #1f6feb;
+      --accent-dark: #1757b8;
+      --danger: #b42318;
+      --danger-dark: #8f1f15;
+      --ok: #176b3a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+    main {
+      width: min(1180px, calc(100vw - 32px));
+      margin: 24px auto 48px;
+    }
+    h1 {
+      margin: 0 0 6px;
+      font-size: 28px;
+      letter-spacing: 0;
+    }
+    h2 {
+      margin: 0 0 14px;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+    p {
+      margin: 0;
+      color: var(--muted);
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 16px;
+      align-items: start;
+      margin-top: 20px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+    }
+    label {
+      display: block;
+      margin: 14px 0 6px;
+      font-weight: 650;
+    }
+    input,
+    textarea,
+    select {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 12px;
+      color: var(--text);
+      background: #fff;
+      font: inherit;
+    }
+    textarea {
+      min-height: 132px;
+      resize: vertical;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+      margin-top: 16px;
+    }
+    button {
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      padding: 10px 12px;
+      color: #fff;
+      background: var(--accent);
+      font: inherit;
+      font-weight: 650;
+      cursor: pointer;
+    }
+    button:hover { background: var(--accent-dark); }
+    button.secondary {
+      color: var(--accent);
+      background: #fff;
+    }
+    button.danger {
+      border-color: var(--danger);
+      background: var(--danger);
+      color: #fff;
+    }
+    button.danger:hover { background: var(--danger-dark); }
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+    .status {
+      margin-top: 14px;
+      padding: 10px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: #fbfcfe;
+      min-height: 44px;
+      white-space: pre-wrap;
+    }
+    .status.ok { border-color: #98d8b0; color: var(--ok); }
+    .status.err { border-color: #f1a7a1; color: var(--danger); }
+    .helper {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .tabs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .tab {
+      width: auto;
+      color: var(--text);
+      background: #fff;
+      border-color: var(--border);
+      padding: 8px 10px;
+    }
+    .tab[aria-selected="true"] {
+      color: #fff;
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+    .output {
+      display: none;
+      min-height: 560px;
+    }
+    .output.active { display: block; }
+    pre {
+      margin: 0;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font: 13px/1.55 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    }
+    .script-view article {
+      border-top: 1px solid var(--border);
+      padding-top: 14px;
+      margin-top: 14px;
+    }
+    .script-view h3 {
+      margin: 0 0 8px;
+      font-size: 16px;
+    }
+    .script-view .meta {
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+    .line {
+      margin: 8px 0;
+    }
+    .speaker {
+      font-weight: 700;
+    }
+    @media (max-width: 840px) {
+      main { width: min(100vw - 20px, 680px); }
+      .layout { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>AI Short Drama Testbench</h1>
+    <p>开发测试页：用一个故事创意跑通项目、大纲、角色圣经和单集剧本生成。</p>
+
+    <div class="layout">
+      <section class="panel" aria-labelledby="control-title">
+        <h2 id="control-title">流程控制</h2>
+        <label for="saved-projects">历史项目</label>
+        <select id="saved-projects">
+          <option value="">加载中...</option>
+        </select>
+        <div class="row">
+          <button id="load-project" class="secondary">加载历史项目</button>
+          <button id="refresh-projects" class="secondary">刷新列表</button>
+        </div>
+        <div class="actions">
+          <button id="delete-project" class="danger">删除当前项目</button>
+        </div>
+        <p class="helper">加载后可以查看之前已生成的大纲、角色圣经和多集剧本。</p>
+
+        <label for="project-name">项目名</label>
+        <input id="project-name" value="测试短剧项目">
+
+        <label for="idea">故事创意</label>
+        <textarea id="idea">一个落魄程序员开发出能读取记忆的AI，却发现老板删除了关于失踪妹妹的关键记忆。他必须在24小时内找回证据。</textarea>
+
+        <div class="row">
+          <div>
+            <label for="episode-count">大纲集数</label>
+            <select id="episode-count">
+              <option value="10" selected>10</option>
+            </select>
+          </div>
+          <div>
+            <label for="episode-number">剧本集数</label>
+            <input id="episode-number" type="number" min="1" max="10" value="1">
+          </div>
+        </div>
+
+        <label for="duration">目标时长（秒）</label>
+        <input id="duration" type="number" min="60" max="180" value="90">
+
+        <div class="actions">
+          <button id="create-project">1. 创建项目</button>
+          <button id="generate-outline">2. 生成大纲</button>
+          <button id="generate-characters">3. 生成角色圣经</button>
+          <button id="generate-script">4. 生成剧本</button>
+          <button id="generate-next-script" class="secondary">生成下一集剧本</button>
+        </div>
+
+        <div id="status" class="status" role="status">还没有开始。先创建项目。</div>
+      </section>
+
+      <section class="panel" aria-labelledby="result-title">
+        <h2 id="result-title">结果查看</h2>
+        <div class="row">
+          <div>
+            <label for="saved-episodes">已保存剧本</label>
+            <select id="saved-episodes">
+              <option value="">暂无已保存剧本</option>
+            </select>
+          </div>
+          <div>
+            <label for="project-id-view">当前项目 ID</label>
+            <input id="project-id-view" readonly>
+          </div>
+        </div>
+        <div class="row">
+          <button id="previous-script" class="secondary">上一集</button>
+          <button id="next-script" class="secondary">下一集</button>
+        </div>
+        <div class="actions">
+          <button id="reload-state" class="secondary">刷新当前项目数据</button>
+          <button id="run-qc" class="secondary">检查当前集 QC</button>
+        </div>
+        <div class="tabs" role="tablist" aria-label="结果类型">
+          <button class="tab" role="tab" aria-selected="true" data-target="script-view">剧本阅读</button>
+          <button class="tab" role="tab" aria-selected="false" data-target="outline-json">大纲 JSON</button>
+          <button class="tab" role="tab" aria-selected="false" data-target="characters-json">角色 JSON</button>
+          <button class="tab" role="tab" aria-selected="false" data-target="memory-json">Story Memory JSON</button>
+          <button class="tab" role="tab" aria-selected="false" data-target="qc-json">QC Report JSON</button>
+          <button class="tab" role="tab" aria-selected="false" data-target="script-json">剧本 JSON</button>
+        </div>
+        <div id="script-view" class="output active script-view">生成剧本后会显示可读版本。</div>
+        <pre id="outline-json" class="output">{}</pre>
+        <pre id="characters-json" class="output">{}</pre>
+        <pre id="memory-json" class="output">{}</pre>
+        <pre id="qc-json" class="output">{}</pre>
+        <pre id="script-json" class="output">{}</pre>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const apiBase = "/api/v1";
+    const devBase = "/dev";
+    const state = {
+      projectId: null,
+      outline: null,
+      characters: null,
+      memory: { episodes: {} },
+      qcReport: null,
+      scripts: {},
+      savedEpisodeNumbers: []
+    };
+
+    const $ = (id) => document.getElementById(id);
+
+    function setStatus(message, kind = "") {
+      const node = $("status");
+      node.textContent = message;
+      node.className = `status ${kind}`;
+    }
+
+    function setBusy(isBusy) {
+      document.querySelectorAll("button").forEach((button) => {
+        button.disabled = isBusy;
+      });
+    }
+
+    async function request(path, options = {}) {
+      const response = await fetch(`${apiBase}${path}`, {
+        headers: { "Content-Type": "application/json" },
+        ...options
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const detail = data.detail || response.statusText;
+        throw new Error(`${response.status} ${detail}`);
+      }
+      return data;
+    }
+
+    async function devRequest(path, options = {}) {
+      const response = await fetch(`${devBase}${path}`, options);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const detail = data.detail || response.statusText;
+        throw new Error(`${response.status} ${detail}`);
+      }
+      return data;
+    }
+
+    function showJson(id, value) {
+      $(id).textContent = JSON.stringify(value || {}, null, 2);
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function renderScript(script) {
+      if (!script) {
+        $("script-view").textContent = "生成剧本后会显示可读版本。";
+        return;
+      }
+      const h = escapeHtml;
+      const scenes = script.scenes.map((scene) => {
+        const dialogues = scene.dialogues.map((dialogue) => `
+          <p class="line"><span class="speaker">${h(dialogue.character_name)}</span>（${h(dialogue.emotion)}）：${h(dialogue.line)}</p>
+          ${dialogue.action_note ? `<p class="meta">动作：${h(dialogue.action_note)}</p>` : ""}
+        `).join("");
+        return `
+          <article>
+            <h3>第 ${h(scene.scene_number)} 场：${h(scene.scene_goal)}</h3>
+            <p class="meta">${h(scene.location)} · ${h(scene.time_of_day)} · ${h(scene.characters.join(", "))}</p>
+            <p>${h(scene.action || "")}</p>
+            ${dialogues}
+            <p class="meta">转场：${h(scene.transition)}</p>
+          </article>
+        `;
+      }).join("");
+      $("script-view").innerHTML = `
+        <h3>第 ${h(script.episode_number)} 集《${h(script.title)}》</h3>
+        <p class="meta">${h(script.duration_seconds)} 秒 · ${h(script.episode_goal)}</p>
+        <p><strong>开场钩子：</strong>${h(script.opening_hook)}</p>
+        ${scenes}
+        <article><h3>结尾钩子</h3><p>${h(script.ending_hook)}</p></article>
+      `;
+    }
+
+    function activeEpisodeNumber() {
+      return Number($("episode-number").value || $("saved-episodes").value || 1);
+    }
+
+    function updateEpisodeSelector() {
+      const selector = $("saved-episodes");
+      selector.innerHTML = "";
+      if (!state.savedEpisodeNumbers.length) {
+        selector.innerHTML = '<option value="">暂无已保存剧本</option>';
+        return;
+      }
+      state.savedEpisodeNumbers.forEach((episodeNumber) => {
+        const option = document.createElement("option");
+        option.value = String(episodeNumber);
+        option.textContent = `第 ${episodeNumber} 集`;
+        selector.appendChild(option);
+      });
+      const current = String(activeEpisodeNumber());
+      if (state.savedEpisodeNumbers.includes(Number(current))) {
+        selector.value = current;
+      }
+    }
+
+    function showSavedScript(episodeNumber) {
+      const script = state.scripts[String(episodeNumber)];
+      $("episode-number").value = String(episodeNumber);
+      if ($("saved-episodes").querySelector(`option[value="${episodeNumber}"]`)) {
+        $("saved-episodes").value = String(episodeNumber);
+      }
+      if (!script) {
+        showJson("script-json", {});
+        renderScript(null);
+        setStatus(`第 ${episodeNumber} 集还没有保存剧本。`, "");
+        return;
+      }
+      showJson("script-json", script);
+      renderScript(script);
+      setStatus(`正在查看第 ${episodeNumber} 集。`, "ok");
+    }
+
+    function applyProjectState(payload) {
+      state.projectId = payload.project.id;
+      state.outline = payload.outline;
+      state.characters = payload.characters;
+      state.memory = payload.memory || { episodes: {} };
+      state.qcReport = null;
+      state.scripts = payload.scripts || {};
+      state.savedEpisodeNumbers = payload.saved_episode_numbers || [];
+      $("project-id-view").value = String(state.projectId);
+      $("project-name").value = payload.project.name || "";
+      $("idea").value = payload.project.idea || $("idea").value;
+      showJson("outline-json", state.outline || {});
+      showJson("characters-json", state.characters || {});
+      showJson("memory-json", state.memory || { episodes: {} });
+      showJson("qc-json", {});
+      updateEpisodeSelector();
+      if (state.savedEpisodeNumbers.length) {
+        showSavedScript(state.savedEpisodeNumbers[0]);
+      } else {
+        showJson("script-json", {});
+        renderScript(null);
+        setStatus(`已加载项目 ID ${state.projectId}，暂无已保存剧本。`, "ok");
+      }
+    }
+
+    function clearLoadedProject() {
+      state.projectId = null;
+      state.outline = null;
+      state.characters = null;
+      state.memory = { episodes: {} };
+      state.qcReport = null;
+      state.scripts = {};
+      state.savedEpisodeNumbers = [];
+      $("project-id-view").value = "";
+      showJson("outline-json", {});
+      showJson("characters-json", {});
+      showJson("memory-json", { episodes: {} });
+      showJson("qc-json", {});
+      showJson("script-json", {});
+      updateEpisodeSelector();
+      renderScript(null);
+    }
+
+    async function loadProjectList() {
+      const result = await devRequest("/projects");
+      const selector = $("saved-projects");
+      selector.innerHTML = "";
+      if (!result.projects.length) {
+        selector.innerHTML = '<option value="">暂无历史项目</option>';
+        return;
+      }
+      result.projects.forEach((project) => {
+        const option = document.createElement("option");
+        option.value = String(project.id);
+        const episodes = project.saved_episode_numbers.length
+          ? ` · 已保存 ${project.saved_episode_numbers.join(", ")} 集`
+          : "";
+        option.textContent = `#${project.id} ${project.name} · ${project.status}${episodes}`;
+        selector.appendChild(option);
+      });
+    }
+
+    async function reloadCurrentProject() {
+      if (!state.projectId) throw new Error("请先创建或加载项目");
+      const payload = await devRequest(`/projects/${state.projectId}/state`);
+      applyProjectState(payload);
+    }
+
+    async function run(label, task) {
+      setBusy(true);
+      setStatus(`${label}中...`);
+      try {
+        const result = await task();
+        setStatus(`${label}完成。`, "ok");
+        return result;
+      } catch (error) {
+        setStatus(`${label}失败：${error.message}`, "err");
+        throw error;
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    $("create-project").addEventListener("click", () => run("创建项目", async () => {
+      const project = await request("/projects", {
+        method: "POST",
+        body: JSON.stringify({ name: $("project-name").value })
+      });
+      state.projectId = project.id;
+      $("project-id-view").value = String(state.projectId);
+      setStatus(`项目已创建：ID ${state.projectId}`, "ok");
+      await loadProjectList();
+    }));
+
+    $("generate-outline").addEventListener("click", () => run("生成大纲", async () => {
+      if (!state.projectId) throw new Error("请先创建项目");
+      const result = await request(`/projects/${state.projectId}/outline`, {
+        method: "POST",
+        body: JSON.stringify({
+          idea: $("idea").value,
+          episode_count: Number($("episode-count").value)
+        })
+      });
+      state.outline = result.outline;
+      showJson("outline-json", result.outline);
+      await reloadCurrentProject();
+    }));
+
+    $("generate-characters").addEventListener("click", () => run("生成角色圣经", async () => {
+      if (!state.projectId) throw new Error("请先创建项目并生成大纲");
+      const result = await request(`/projects/${state.projectId}/characters/generate`, {
+        method: "POST",
+        body: JSON.stringify({})
+      });
+      state.characters = result.characters;
+      showJson("characters-json", result.characters);
+      await reloadCurrentProject();
+    }));
+
+    $("generate-script").addEventListener("click", () => run("生成剧本", async () => {
+      if (!state.projectId) throw new Error("请先创建项目并生成大纲");
+      const episodeNumber = Number($("episode-number").value);
+      const result = await request(`/projects/${state.projectId}/episodes/${episodeNumber}/script`, {
+        method: "POST",
+        body: JSON.stringify({ target_duration_seconds: Number($("duration").value) })
+      });
+      state.scripts[episodeNumber] = result.script;
+      await reloadCurrentProject();
+      state.savedEpisodeNumbers = Array.from(new Set([
+        ...state.savedEpisodeNumbers,
+        episodeNumber
+      ])).sort((left, right) => left - right);
+      updateEpisodeSelector();
+      showJson("script-json", result.script);
+      renderScript(result.script);
+    }));
+
+    $("generate-next-script").addEventListener("click", async () => {
+      $("episode-number").value = String(Number($("episode-number").value) + 1);
+      $("generate-script").click();
+    });
+
+    $("load-project").addEventListener("click", () => run("加载历史项目", async () => {
+      const projectId = Number($("saved-projects").value);
+      if (!projectId) throw new Error("请选择历史项目");
+      const payload = await devRequest(`/projects/${projectId}/state`);
+      applyProjectState(payload);
+    }));
+
+    $("refresh-projects").addEventListener("click", () => run("刷新历史项目", loadProjectList));
+
+    $("reload-state").addEventListener("click", () => run("刷新当前项目数据", reloadCurrentProject));
+
+    $("run-qc").addEventListener("click", () => run("检查当前集 QC", async () => {
+      if (!state.projectId) throw new Error("请先加载或创建项目");
+      const episodeNumber = activeEpisodeNumber();
+      if (!state.scripts[String(episodeNumber)]) {
+        throw new Error(`第 ${episodeNumber} 集还没有保存剧本`);
+      }
+      const result = await devRequest(
+        `/projects/${state.projectId}/episodes/${episodeNumber}/qc`,
+        { method: "POST" }
+      );
+      state.qcReport = result.report;
+      showJson("qc-json", result.report);
+    }));
+
+    $("delete-project").addEventListener("click", () => run("删除当前项目", async () => {
+      if (!state.projectId) throw new Error("请先加载或创建项目");
+      const projectName = $("project-name").value || `ID ${state.projectId}`;
+      const confirmed = window.confirm(
+        `确定删除项目 #${state.projectId}「${projectName}」吗？\n\n这会删除本地数据库里的大纲、角色圣经、剧本和 Story Memory。`
+      );
+      if (!confirmed) {
+        setStatus("已取消删除。");
+        return;
+      }
+      await fetch(`${devBase}/projects/${state.projectId}`, { method: "DELETE" })
+        .then(async (response) => {
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(`${response.status} ${data.detail || response.statusText}`);
+          }
+          return data;
+        });
+      clearLoadedProject();
+      await loadProjectList();
+    }));
+
+    $("saved-episodes").addEventListener("change", () => {
+      const episodeNumber = Number($("saved-episodes").value);
+      if (episodeNumber) showSavedScript(episodeNumber);
+    });
+
+    $("previous-script").addEventListener("click", () => {
+      const current = activeEpisodeNumber();
+      const previous = state.savedEpisodeNumbers
+        .filter((episodeNumber) => episodeNumber < current)
+        .at(-1);
+      if (previous) showSavedScript(previous);
+    });
+
+    $("next-script").addEventListener("click", () => {
+      const current = activeEpisodeNumber();
+      const next = state.savedEpisodeNumbers.find((episodeNumber) => episodeNumber > current);
+      if (next) showSavedScript(next);
+    });
+
+    document.querySelectorAll(".tab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        document.querySelectorAll(".tab").forEach((item) => {
+          item.setAttribute("aria-selected", "false");
+        });
+        document.querySelectorAll(".output").forEach((item) => {
+          item.classList.remove("active");
+        });
+        tab.setAttribute("aria-selected", "true");
+        $(tab.dataset.target).classList.add("active");
+      });
+    });
+
+    loadProjectList().catch((error) => {
+      setStatus(`加载历史项目失败：${error.message}`, "err");
+    });
+  </script>
+</body>
+</html>

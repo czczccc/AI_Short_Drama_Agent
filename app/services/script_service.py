@@ -8,6 +8,7 @@ from app.providers.llm.base import LLMProvider
 from app.schemas.outline import EpisodeOutline, StoryOutline
 from app.schemas.script import EpisodeScript, ScriptGenerateRequest, ScriptResponse
 from app.services.character_service import load_character_bibles
+from app.services.memory_service import load_story_memory, upsert_episode_memory
 from app.services.outline_service import (
     OutlineNotReadyError,
     ProjectNotFoundError,
@@ -52,6 +53,7 @@ def generate_script(
     outline = load_outline(project)
     episode_outline = _find_episode(outline, episode_number)
     character_collection = load_character_bibles(project, outline)
+    story_memory = load_story_memory(project)
     script = WriterAgent(llm_provider).generate_script(
         story_outline=outline,
         episode_outline=episode_outline,
@@ -59,11 +61,13 @@ def generate_script(
         character_bibles=(
             character_collection.characters if character_collection else None
         ),
+        story_memory=story_memory,
     )
 
     scripts = json.loads(project.scripts_json) if project.scripts_json else {}
     scripts[str(episode_number)] = script.model_dump(mode="json")
     project.scripts_json = json.dumps(scripts, ensure_ascii=False)
+    upsert_episode_memory(project, script)
     project.status = "script_ready"
     db.commit()
     db.refresh(project)

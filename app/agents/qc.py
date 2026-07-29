@@ -4,70 +4,36 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from app.agents.writer import (
+    _find_neighbor_episode,
+    _future_episode_boundary,
+    _story_outline_context,
+)
 from app.providers.llm.base import LLMProvider, LLMResponseValidationError
 from app.schemas.character import CharacterBible
 from app.schemas.memory import StoryMemory
 from app.schemas.outline import EpisodeOutline, StoryOutline
+from app.schemas.qc import QCReport
 from app.schemas.script import EpisodeScript
 
 
-PROMPT_PATH = Path(__file__).resolve().parents[1] / "prompts" / "writer_v2.md"
+PROMPT_PATH = Path(__file__).resolve().parents[1] / "prompts" / "qc_v1.md"
 logger = logging.getLogger(__name__)
 
 
-def _find_neighbor_episode(
-    story_outline: StoryOutline,
-    episode_number: int,
-    offset: int,
-) -> EpisodeOutline | None:
-    target_episode_number = episode_number + offset
-    return next(
-        (
-            episode
-            for episode in story_outline.episodes
-            if episode.episode_number == target_episode_number
-        ),
-        None,
-    )
-
-
-def _story_outline_context(
-    story_outline: StoryOutline,
-    previous_episode: EpisodeOutline | None,
-    current_episode: EpisodeOutline,
-) -> dict:
-    context = story_outline.model_dump(mode="json")
-    context["episodes"] = [
-        episode.model_dump(mode="json")
-        for episode in (previous_episode, current_episode)
-        if episode is not None
-    ]
-    return context
-
-
-def _future_episode_boundary(episode: EpisodeOutline | None) -> dict | None:
-    if episode is None:
-        return None
-    return {
-        "episode_number": episode.episode_number,
-        "title": episode.title,
-        "reserved_for_future": True,
-    }
-
-
-class WriterAgent:
+class QCAgent:
     def __init__(self, llm_provider: LLMProvider) -> None:
         self._llm_provider = llm_provider
         self._system_prompt = PROMPT_PATH.read_text(encoding="utf-8")
 
-    def generate_script(
+    def generate_report(
         self,
         story_outline: StoryOutline,
         episode_outline: EpisodeOutline,
-        target_duration_seconds: int,
+        script: EpisodeScript,
         character_bibles: dict[str, CharacterBible] | None = None,
         story_memory: StoryMemory | None = None,
-    ) -> EpisodeScript:
+    ) -> QCReport:
         characters = (
             [bible.model_dump(mode="json") for bible in character_bibles.values()]
             if character_bibles is not None
@@ -96,7 +62,6 @@ class WriterAgent:
                 "character_bible" if character_bibles is not None else "outline"
             ),
             "characters": characters,
-            "episode_outline": episode_outline.model_dump(mode="json"),
             "previous_episode_outline": (
                 previous_episode.model_dump(mode="json") if previous_episode else None
             ),
@@ -107,24 +72,19 @@ class WriterAgent:
                 if story_memory is not None
                 else StoryMemory().model_dump(mode="json")
             ),
-            "target_duration_seconds": target_duration_seconds,
+            "script": script.model_dump(mode="json"),
         }
-        generated_script = self._llm_provider.generate_structured(
+        generated_report = self._llm_provider.generate_structured(
             system_prompt=self._system_prompt,
             user_prompt=json.dumps(input_data, ensure_ascii=False),
-            output_schema=EpisodeScript,
+            output_schema=QCReport,
         )
 
         try:
-            return EpisodeScript.model_validate(
-                generated_script.model_dump(mode="json"),
+            return QCReport.model_validate(
+                generated_report.model_dump(mode="json"),
                 context={
                     "expected_episode_number": episode_outline.episode_number,
-                    "target_duration_seconds": target_duration_seconds,
-                    "allowed_character_ids": {
-                        character.character_id
-                        for character in story_outline.characters
-                    },
                 },
             )
         except ValidationError as exc:
@@ -139,5 +99,6 @@ class WriterAgent:
                     include_input=False,
                 )
             ]
-            logger.warning("Writer output context validation failed: issues=%s", issues)
-            raise LLMResponseValidationError("LLM 返回剧本与大纲不一致") from exc
+            logger.warning("QC output context validation failed: issues=%s", issues)
+            raise LLMResponseValidationError("LLM 返回 QC 报告与请求不一致") from exc
+

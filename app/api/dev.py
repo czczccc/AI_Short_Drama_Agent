@@ -2,13 +2,14 @@ import json
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import HTMLResponse
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.database.session import get_db
 from app.models.project import Project
+from app.observability.logging import read_recent_logs
 from app.providers.llm.base import LLMProvider
 from app.providers.llm.factory import get_configured_llm_provider
 from app.services.memory_service import load_story_memory
@@ -50,6 +51,16 @@ def list_dev_projects(db: Session = Depends(get_db)) -> dict:
         select(Project).order_by(desc(Project.updated_at), desc(Project.id)).limit(50)
     ).all()
     return {"projects": [_project_summary(project) for project in projects]}
+
+
+@router.get("/logs", include_in_schema=False)
+def list_dev_logs(
+    project_id: int | None = None,
+    limit: int = Query(default=200, ge=1, le=1000),
+) -> dict:
+    return {
+        "logs": read_recent_logs(project_id=project_id, limit=limit),
+    }
 
 
 @router.get("/projects/{project_id}/state", include_in_schema=False)

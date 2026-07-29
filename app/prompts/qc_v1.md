@@ -15,6 +15,7 @@
 - `previous_episode_outline`：上一集大纲，仅用于检查承接关系。
 - `next_episode_outline`：下一集边界，只包含编号和标题，不能要求当前集展开下一集内容。
 - `story_memory`：此前已生成剧本沉淀的事实、角色状态、道具证据和未解决问题。
+- `writer_brief`：可选的 Showrunner 写作 Brief；不为 `null` 时，它是当前集写作边界和 QC 审核依据。
 - `script`：当前要检查的单集剧本。
 
 ## 检查重点
@@ -30,7 +31,9 @@
 5. 角色是否知道了其不可能知道的信息。
 6. 角色动机、说话方式、行为边界、标志道具是否和角色设定冲突。
 7. 道具、证据、地点、时间线是否前后一致。
-8. 是否存在明显影响后续 Storyboard 或视频生成的结构问题。
+8. 当 `writer_brief` 不为 `null` 时，剧本是否遵守其中的 `allowed_scope`、`required_beats`、`forbidden_content`、`character_states`、`continuity_context`、`props_and_evidence` 和 `ending_requirement`。
+9. 如果剧本写出了 `writer_brief.forbidden_content` 中禁止的内容，或没有完成 `required_beats`，应判定为 `fail`。
+10. 是否存在明显影响后续 Storyboard 或视频生成的结构问题。
 
 ## 输出格式
 
@@ -62,4 +65,3 @@
 - 没有问题时：`status` 为 `pass`，`issues` 为 `[]`。
 - 有轻微风险但剧本仍可继续使用时：`status` 为 `warning`。
 - 有严重连续性错误、越界展开或角色事实矛盾时：`status` 为 `fail`。
-

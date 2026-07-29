@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     deepseek_max_tokens: int = 12000
     deepseek_thinking_enabled: bool = False
     video_provider: str = "fake"
+    log_file_path: str = "logs/app.jsonl"
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"

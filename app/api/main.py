@@ -1,4 +1,6 @@
 from contextlib import asynccontextmanager
+import time
+import uuid
 
 from fastapi import APIRouter, FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,6 +10,13 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.api import characters, dev, outlines, projects, scripts, showrunner
 from app.configs.settings import get_settings
 from app.database.session import init_db
+from app.observability.logging import (
+    configure_logging,
+    duration_ms,
+    log_event,
+    reset_request_id,
+    set_request_id,
+)
 from app.providers.llm.base import (
     LLMCallError,
     LLMConfigurationError,
@@ -22,6 +31,7 @@ API_V1_PREFIX = "/api/v1"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 应用启动时初始化数据库（创建表）
+    configure_logging()
     init_db()
     yield
 
@@ -37,8 +47,40 @@ app.add_middleware(
     allow_origins=settings.cors_allowed_origins,
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization"],
+    allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
+    expose_headers=["X-Request-ID"],
 )
+
+
+@app.middleware("http")
+async def request_logging_middleware(request: Request, call_next):
+    request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+    token = set_request_id(request_id)
+    started_at = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        log_event(
+            "http.request.failed",
+            level="error",
+            method=request.method,
+            path=request.url.path,
+            duration_ms=duration_ms(started_at),
+            error_type=type(exc).__name__,
+        )
+        reset_request_id(token)
+        raise
+
+    response.headers["X-Request-ID"] = request_id
+    log_event(
+        "http.request.completed",
+        method=request.method,
+        path=request.url.path,
+        status_code=response.status_code,
+        duration_ms=duration_ms(started_at),
+    )
+    reset_request_id(token)
+    return response
 
 
 @app.exception_handler(LLMConfigurationError)

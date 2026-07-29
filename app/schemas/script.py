@@ -114,6 +114,8 @@ class EpisodeScript(StrictScriptModel):
 
 class ScriptGenerateRequest(StrictScriptModel):
     target_duration_seconds: int = Field(default=90, ge=60, le=180)
+    use_showrunner_brief: bool = False
+    run_showrunner_qc: bool = False
 
 
 class ScriptResponse(StrictScriptModel):

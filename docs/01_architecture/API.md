@@ -10,6 +10,7 @@
 
 所有正式接口统一使用 `/api/v1`。旧的无版本路径暂时保留用于兼容，但不会显示在 OpenAPI 文档中，独立前端不应继续使用旧路径。
 `/dev/testbench` 仅用于本地开发验证，不属于正式 API，也不会显示在 OpenAPI 文档中。该页面可通过开发辅助接口读取本地历史项目、已保存大纲、角色圣经、多集剧本和 Story Memory，用于人工检查工作流输出；也可以对当前已保存剧本触发一次 LLM QC v1，返回结构化质检报告但不修改剧本。
+开发环境会为每个 HTTP 请求返回 `X-Request-ID` 响应头，并写入本地结构化 JSONL 日志。日志默认路径为 `logs/app.jsonl`，可通过 `.env` 中的 `LOG_FILE_PATH` 覆盖。
 
 ## 错误格式
 
@@ -289,7 +290,9 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/1/characters"
 
 ```json
 {
-  "target_duration_seconds": 90
+  "target_duration_seconds": 90,
+  "use_showrunner_brief": false,
+  "run_showrunner_qc": false
 }
 ```
 
@@ -331,7 +334,20 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/1/characters"
 }
 ```
 
-项目必须已有有效大纲；同一集重新生成会覆盖该集旧剧本，不影响其他集。
+项目必须已有有效大纲；同一集重新生成会覆盖该集旧剧本，不影响其他集。`use_showrunner_brief` 默认为 `false`，保持旧流程；设置为 `true` 时，系统会读取已保存的当前集 Writer Brief 并传给 Writer Agent，Brief 不存在时返回错误，不会自动生成 Brief。`run_showrunner_qc` 默认为 `false`；设置为 `true` 时，系统会先把 Writer 输出当作 draft 交给 Showrunner QC，只有 QC `status` 为 `pass` 时才保存正式剧本并更新 Story Memory。QC 为 `warning` 或 `fail` 时，接口返回 `409`，不写入 `scripts_json` 或 `memory_json`，但会把 QC 报告保存到 `showrunner_json.qc_reports`。
+
+常见错误：
+
+- `404`：项目不存在
+- `404`：分集不存在
+- `404`：`use_showrunner_brief=true` 但 Showrunner State 尚未生成
+- `404`：`use_showrunner_brief=true` 但该集 Writer Brief 尚未生成
+- `409`：项目大纲尚未就绪
+- `409`：`run_showrunner_qc=true` 但未开启 `use_showrunner_brief`
+- `409`：Showrunner QC 未通过，draft 未保存
+- `422`：请求参数错误
+- `502`：LLM 调用、JSON 解析或 Schema 校验失败
+- `503`：LLM Provider 或 API Key 配置不可用
 
 ## 生成 Showrunner State
 
@@ -439,6 +455,127 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/1/showrunner"
 - `404`：项目不存在
 - `404`：Showrunner State 尚未生成
 
+## 生成 Writer Brief
+
+### `POST /api/v1/projects/{project_id}/episodes/{episode_number}/writer-brief`
+
+Showrunner Agent 根据已保存的 Showrunner State、指定集 Episode Plan、角色弧线和 Story Memory，为第 N 集生成写作 Brief。Phase 3.2 只生成和保存 Brief，不接入 Writer，不生成剧本，不执行 Showrunner QC。
+
+请求示例：
+
+```json
+{
+  "target_duration_seconds": 90,
+  "force_regenerate": false
+}
+```
+
+当前 `force_regenerate` 为预留字段；调用生成接口会重新生成并覆盖当前集 Brief，不影响其他集 Brief。
+
+响应示例：
+
+```json
+{
+  "project_id": 1,
+  "episode_number": 1,
+  "brief": {
+    "episode_number": 1,
+    "episode_goal": "第1集必须建立林峰被夺走成果后的追证目标。",
+    "allowed_scope": ["只展开第1集大纲中的失业、发现署名异常和初步取证。"],
+    "required_beats": [
+      "林峰确认成果被老板署名。",
+      "林峰遭遇第一次取证阻碍。",
+      "结尾出现匿名警告。"
+    ],
+    "forbidden_content": ["不得确认最终证据结果。"],
+    "character_states": [
+      {
+        "character_id": "lin_feng",
+        "character_name": "林峰",
+        "current_goal": "确认成果是否被窃取。",
+        "emotional_state": "震惊但克制",
+        "knows": ["知道自己被突然解雇。"],
+        "must_not_know": ["不知道完整幕后链条。"]
+      }
+    ],
+    "continuity_context": ["只能承接此前正式剧本中已经发生的事实。"],
+    "props_and_evidence": ["旧电脑、服务器记录可以作为线索。"],
+    "ending_requirement": "结尾制造下一步追查悬念，但不得解答下一集核心问题。",
+    "target_duration_seconds": 90
+  }
+}
+```
+
+常见错误：
+
+- `404`：项目不存在
+- `404`：Showrunner State 尚未生成
+- `404`：Showrunner Episode Plan 中不存在该集
+- `422`：请求参数错误，例如目标时长不在允许范围
+- `502`：LLM 调用、JSON 解析或 Schema 校验失败
+- `503`：LLM Provider 或 API Key 配置不可用
+
+## 查询 Writer Brief
+
+### `GET /api/v1/projects/{project_id}/episodes/{episode_number}/writer-brief`
+
+请求示例：
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/1/episodes/1/writer-brief"
+```
+
+成功响应结构与“生成 Writer Brief”的响应示例相同。
+
+常见错误：
+
+- `404`：项目不存在
+- `404`：Showrunner State 尚未生成
+- `404`：Showrunner Episode Plan 中不存在该集
+- `404`：该集 Writer Brief 尚未生成
+
+## 查询 Showrunner QC 报告
+
+### `GET /api/v1/projects/{project_id}/episodes/{episode_number}/showrunner-qc`
+
+查询最近一次由 `run_showrunner_qc=true` 的剧本生成流程保存的 Showrunner QC 报告。该接口只读，不触发新的 LLM 调用。
+
+请求示例：
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/1/episodes/1/showrunner-qc"
+```
+
+响应示例：
+
+```json
+{
+  "project_id": 1,
+  "episode_number": 1,
+  "report": {
+    "episode_number": 1,
+    "status": "fail",
+    "summary": "剧本提前揭示了后续集才应确认的关键答案。",
+    "issues": [
+      {
+        "episode_number": 1,
+        "severity": "error",
+        "code": "future_reveal",
+        "message": "草稿提前确认最终证据结果，违反本集 Brief。",
+        "suggestion": "删除最终答案，只保留触发下一步追查的悬念。"
+      }
+    ]
+  }
+}
+```
+
+常见错误：
+
+- `404`：项目不存在
+- `404`：Showrunner State 尚未生成
+- `404`：Showrunner Episode Plan 中不存在该集
+- `404`：该集 Showrunner QC 报告尚未生成
+
 ## 查询已保存的单集剧本
 
 ### `GET /api/v1/projects/{project_id}/episodes/{episode_number}/script`
@@ -496,6 +633,44 @@ Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/dev/projects/1/episod
 - `409`：项目大纲尚未就绪
 - `502`：LLM 调用、JSON 解析或 Schema 校验失败
 - `503`：LLM Provider 或 API Key 配置不可用
+
+## 开发辅助：查询结构化日志
+
+以下接口只服务本地开发排查，不属于正式 `/api/v1`，不会显示在 OpenAPI 文档中。
+
+### `GET /dev/logs`
+
+读取最近的本地 JSONL 日志。日志只记录请求和工作流元数据，例如 `event`、`request_id`、`project_id`、`episode_number`、状态码和耗时；不会记录 API Key、完整 Prompt 或完整剧本正文。
+
+查询参数：
+
+- `project_id`：可选，只返回指定项目相关日志
+- `limit`：可选，默认 `200`，范围 `1–1000`
+
+请求示例：
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/dev/logs?project_id=1&limit=50"
+```
+
+响应示例：
+
+```json
+{
+  "logs": [
+    {
+      "timestamp": "2026-07-30T10:00:00.000000+00:00",
+      "level": "info",
+      "logger": "ai_short_drama",
+      "request_id": "manual-request-id",
+      "event": "workflow.script.saved",
+      "project_id": 1,
+      "episode_number": 1,
+      "status": "script_ready"
+    }
+  ]
+}
+```
 
 ## 当前未提供的接口
 

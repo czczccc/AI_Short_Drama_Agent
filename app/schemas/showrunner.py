@@ -1,6 +1,7 @@
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.outline import CharacterId, ChineseText
+from app.schemas.qc import QCReport
 
 
 class StrictShowrunnerModel(BaseModel):
@@ -55,6 +56,28 @@ class CharacterArcPlan(StrictShowrunnerModel):
         return self
 
 
+class WriterBriefCharacterState(StrictShowrunnerModel):
+    character_id: CharacterId
+    character_name: ChineseText
+    current_goal: ChineseText
+    emotional_state: ChineseText
+    knows: list[ChineseText] = Field(min_length=1)
+    must_not_know: list[ChineseText] = Field(min_length=1)
+
+
+class WriterBrief(StrictShowrunnerModel):
+    episode_number: int = Field(ge=1, le=10)
+    episode_goal: ChineseText
+    allowed_scope: list[ChineseText] = Field(min_length=1)
+    required_beats: list[ChineseText] = Field(min_length=1)
+    forbidden_content: list[ChineseText] = Field(min_length=1)
+    character_states: list[WriterBriefCharacterState] = Field(min_length=1)
+    continuity_context: list[ChineseText] = Field(min_length=1)
+    props_and_evidence: list[ChineseText] = Field(min_length=1)
+    ending_requirement: ChineseText
+    target_duration_seconds: int = Field(ge=30, le=600)
+
+
 class ShowrunnerState(StrictShowrunnerModel):
     version: str = Field(pattern=r"^showrunner_v\d+$")
     source_outline_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
@@ -81,3 +104,19 @@ class ShowrunnerResponse(StrictShowrunnerModel):
     project_id: int
     showrunner: ShowrunnerState
 
+
+class WriterBriefGenerateRequest(StrictShowrunnerModel):
+    target_duration_seconds: int = Field(default=90, ge=30, le=600)
+    force_regenerate: bool = False
+
+
+class WriterBriefResponse(StrictShowrunnerModel):
+    project_id: int
+    episode_number: int
+    brief: WriterBrief
+
+
+class ShowrunnerQCResponse(StrictShowrunnerModel):
+    project_id: int
+    episode_number: int
+    report: QCReport

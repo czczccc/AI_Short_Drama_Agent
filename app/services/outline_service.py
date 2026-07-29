@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.agents.director import DirectorAgent
 from app.models.project import Project
+from app.observability.logging import log_event
 from app.providers.llm.base import LLMProvider
 from app.schemas.outline import (
     OutlineGenerateRequest,
@@ -39,6 +40,11 @@ def generate_outline(
     if project is None:
         raise ProjectNotFoundError
 
+    log_event(
+        "workflow.outline.started",
+        project_id=project_id,
+        episode_count=data.episode_count,
+    )
     outline = DirectorAgent(llm_provider).generate_outline(
         idea=data.idea,
         episode_count=data.episode_count,
@@ -48,6 +54,12 @@ def generate_outline(
     project.status = "outline_ready"
     db.commit()
     db.refresh(project)
+    log_event(
+        "workflow.outline.generated",
+        project_id=project.id,
+        episode_count=len(outline.episodes),
+        status=project.status,
+    )
 
     return OutlineGenerateResponse(
         project_id=project.id,

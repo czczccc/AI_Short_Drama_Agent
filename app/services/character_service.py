@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.agents.character import CharacterAgent
 from app.models.project import Project
+from app.observability.logging import log_event
 from app.providers.llm.base import LLMProvider
 from app.schemas.character import (
     CharacterBibleCollection,
@@ -47,6 +48,12 @@ def _save_collection(
     project.status = "characters_ready"
     db.commit()
     db.refresh(project)
+    log_event(
+        "workflow.characters.saved",
+        project_id=project.id,
+        character_count=len(collection.characters),
+        status=project.status,
+    )
     return _response(project, collection)
 
 
@@ -71,6 +78,11 @@ def generate_character_bibles(
     if project is None:
         raise ProjectNotFoundError
     outline = load_outline(project)
+    log_event(
+        "workflow.characters.started",
+        project_id=project_id,
+        character_count=len(outline.characters),
+    )
     collection = CharacterAgent(llm_provider).generate_character_bibles(outline)
     return _save_collection(db, project, collection)
 

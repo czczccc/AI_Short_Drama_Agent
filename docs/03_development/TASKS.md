@@ -38,6 +38,9 @@
 - [x] 测试页可查看大纲 JSON、角色 JSON、剧本 JSON 和 Story Memory JSON
 - [x] 测试页可对当前集触发 LLM QC v1 并查看 QC Report JSON
 - [x] 测试页可删除本地历史项目
+- [x] 本地结构化 JSONL 日志 `logs/app.jsonl`
+- [x] HTTP `X-Request-ID` 请求关联
+- [x] 开发辅助日志查询接口 `/dev/logs`
 
 
 ## Phase 3 视频
@@ -65,6 +68,32 @@
   - [ ] 选择第一个供应商
   - [ ] 在 Provider 封装供应商认证、请求、状态映射和错误清洗
   - [ ] 使用同一业务接口替换 Fake Provider 进行集成验证
+
+
+## Showrunner
+
+- [x] Phase S3-1：Showrunner State MVP
+  - [x] `Project.showrunner_json` 持久化字段与 SQLite 幂等迁移
+  - [x] Story Bible、Episode Plan、Character Arc Schema
+  - [x] Showrunner Agent 根据大纲和角色圣经生成整季总控状态
+  - [x] 生成和查询 Showrunner State API
+  - [x] 基于稳定排序 JSON 内容计算 SHA-256 来源哈希
+- [x] Phase S3-2：Writer Brief MVP
+  - [x] Writer Brief Schema
+  - [x] Showrunner Agent 为指定集生成 Writer Brief
+  - [x] Writer Brief 保存到 `showrunner_json.writer_briefs`
+  - [x] 生成和查询 Writer Brief API
+  - [x] 重新生成某集 Brief 只覆盖该集，不影响其他集
+- [x] Phase S3-3：Writer 接入 Writer Brief
+  - [x] Writer 生成请求可选择使用已保存 Brief
+  - [x] Writer Prompt 接收 Brief 并优先遵守本集边界
+  - [x] 默认不使用 Brief，保持旧剧本生成流程兼容
+- [x] Phase S3-4：Showrunner QC
+  - [x] 对 Writer draft 按 Brief、Story Bible、Episode Plan、Character Arc 和 Story Memory 审核
+  - [x] QC 通过后再保存正式剧本并更新正式 Story Memory
+  - [x] QC 不通过时不写入正式 Story Memory
+  - [x] QC 报告保存到 `showrunner_json.qc_reports`
+  - [x] 查询已保存 Showrunner QC 报告 API
 
 
 ## Phase 4 后处理

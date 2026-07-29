@@ -30,7 +30,9 @@ AI 短剧生产系统：从创意输入到视频成片形成自动化工作流�
 - `app/providers/llm` —— 通用 LLM Provider 与 DeepSeek 适配器
 - `app/agents` —— Director、Character、Writer、QC 与 Showrunner Agent
 - `app/prompts` —— 版本化 Prompt
+- `app/observability` —— 本地结构化日志与请求链路追踪
 - `data/` —— 本地 SQLite 数据库和数据库备份
+- `logs/` —— 本地运行日志（默认忽略提交）
 - `tests/` —— 测试
 - `docs/` —— 产品与设计文档
 
@@ -66,6 +68,24 @@ AI 短剧生产系统：从创意输入到视频成片形成自动化工作流�
    - OpenAPI JSON： http://127.0.0.1:8000/openapi.json
 
 独立前端允许访问的来源由 `.env` 中的 `CORS_ALLOWED_ORIGINS` 配置。开发环境默认示例包含本机 `3000` 和 `5173` 端口；生产环境应替换为实际前端域名，不要使用 `*`。
+
+## 本地日志
+
+服务会为每个 HTTP 请求返回 `X-Request-ID`，并把请求和关键工作流事件写入本地 JSONL 日志，默认路径为 `logs/app.jsonl`。可以在 `.env` 中用 `LOG_FILE_PATH` 覆盖。
+
+查看最近日志：
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/dev/logs?limit=50"
+```
+
+按项目过滤：
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/dev/logs?project_id=$($project.id)&limit=50"
+```
+
+日志只记录 `event`、`request_id`、`project_id`、`episode_number`、状态码和耗时等元数据，不记录 API Key、完整 Prompt 或完整剧本正文。
 
 ## Phase 2A：生成 10 集大纲
 
@@ -121,6 +141,63 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/$($project.id)/sho
 ```
 
 当前 Showrunner Phase 3.1 只生成 Story Bible、Episode Plan 和 Character Arc；暂不生成 Writer Brief、不接入 Writer、不执行 Showrunner QC。
+
+Phase 3.2 可为指定集生成 Writer Brief：
+
+```powershell
+$briefBody = @{
+  target_duration_seconds = 90
+  force_regenerate = $false
+} | ConvertTo-Json
+
+Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:8000/api/v1/projects/$($project.id)/episodes/1/writer-brief" `
+  -ContentType "application/json" `
+  -Body $briefBody
+```
+
+查询已保存的 Writer Brief：
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/$($project.id)/episodes/1/writer-brief"
+```
+
+生成剧本时可选择使用已保存 Writer Brief：
+
+```powershell
+$scriptBody = @{
+  target_duration_seconds = 90
+  use_showrunner_brief = $true
+} | ConvertTo-Json
+
+Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:8000/api/v1/projects/$($project.id)/episodes/1/script" `
+  -ContentType "application/json" `
+  -Body $scriptBody
+```
+
+`use_showrunner_brief` 默认为 `$false`。开启后系统只读取已保存 Brief，不会自动生成 Brief。
+
+如需开启 Showrunner QC 门禁，让剧本先作为 draft 接受审核：
+
+```powershell
+$scriptBody = @{
+  target_duration_seconds = 90
+  use_showrunner_brief = $true
+  run_showrunner_qc = $true
+} | ConvertTo-Json
+
+Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:8000/api/v1/projects/$($project.id)/episodes/1/script" `
+  -ContentType "application/json" `
+  -Body $scriptBody
+```
+
+QC 只有 `pass` 时才会保存正式剧本并更新 Story Memory；`warning` 或 `fail` 会阻断保存，但 QC 报告仍可查询：
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/$($project.id)/episodes/1/showrunner-qc"
+```
 
 ## 运行测试
 

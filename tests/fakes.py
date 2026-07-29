@@ -6,7 +6,7 @@ from app.schemas.character import CharacterBible, CharacterBibleCollection
 from app.schemas.outline import StoryOutline
 from app.schemas.qc import QCReport
 from app.schemas.script import EpisodeScript
-from app.schemas.showrunner import ShowrunnerState
+from app.schemas.showrunner import ShowrunnerState, WriterBrief
 
 
 SchemaT = TypeVar("SchemaT", bound=BaseModel)
@@ -171,6 +171,32 @@ def valid_qc_report_data(episode_number: int = 1) -> dict:
     }
 
 
+def valid_qc_pass_report_data(episode_number: int = 1) -> dict:
+    return {
+        "episode_number": episode_number,
+        "status": "pass",
+        "summary": "剧本符合当前集 Brief、连续性和分集边界要求。",
+        "issues": [],
+    }
+
+
+def valid_qc_fail_report_data(episode_number: int = 1) -> dict:
+    return {
+        "episode_number": episode_number,
+        "status": "fail",
+        "summary": "剧本提前揭示了后续集才应确认的关键答案。",
+        "issues": [
+            {
+                "episode_number": episode_number,
+                "severity": "error",
+                "code": "future_reveal",
+                "message": "草稿提前确认最终证据结果，违反本集 Brief。",
+                "suggestion": "删除最终答案，只保留触发下一步追查的悬念。",
+            }
+        ],
+    }
+
+
 def valid_showrunner_state_data(
     source_outline_hash: str | None = None,
     source_characters_hash: str | None = None,
@@ -233,6 +259,36 @@ def valid_showrunner_state_data(
     }
 
 
+def valid_writer_brief_data(
+    episode_number: int = 1,
+    target_duration_seconds: int = 90,
+) -> dict:
+    return {
+        "episode_number": episode_number,
+        "episode_goal": f"第{episode_number}集必须推进调查但不提前解答终局秘密。",
+        "allowed_scope": [f"只展开第{episode_number}集大纲中的调查行动。"],
+        "required_beats": [
+            f"林峰完成第{episode_number}集的阶段性取证。",
+            "结尾保留下一步追查悬念。",
+        ],
+        "forbidden_content": ["不得提前确认最终证据结果。"],
+        "character_states": [
+            {
+                "character_id": "lin_feng",
+                "character_name": "林峰",
+                "current_goal": "确认当前线索是否可靠。",
+                "emotional_state": "紧张克制",
+                "knows": ["林峰已经知道老板可能窃取了他的AI成果。"],
+                "must_not_know": ["不能知道最终幕后链条的完整答案。"],
+            }
+        ],
+        "continuity_context": ["此前正式剧本中已发生的事实才能作为承接。"],
+        "props_and_evidence": ["旧机械表和服务器记录可以作为线索。"],
+        "ending_requirement": "结尾只能制造悬念，不得解答下一集核心问题。",
+        "target_duration_seconds": target_duration_seconds,
+    }
+
+
 class FakeLLMProvider:
     def __init__(
         self,
@@ -242,6 +298,8 @@ class FakeLLMProvider:
         script_duration_seconds: int = 90,
         character_mode: str = "valid",
         showrunner_mode: str = "valid",
+        writer_brief_episode_number: int | None = None,
+        qc_status: str = "warning",
         script_dialogue_key: str = "dialogues",
     ) -> None:
         self.script_episode_number = script_episode_number
@@ -250,6 +308,8 @@ class FakeLLMProvider:
         self.script_duration_seconds = script_duration_seconds
         self.character_mode = character_mode
         self.showrunner_mode = showrunner_mode
+        self.writer_brief_episode_number = writer_brief_episode_number
+        self.qc_status = qc_status
         self.script_dialogue_key = script_dialogue_key
         self.last_system_prompt: str | None = None
         self.last_user_prompt: str | None = None
@@ -295,6 +355,14 @@ class FakeLLMProvider:
                     scene["dialogue"] = scene.pop("dialogues")
             return output_schema.model_validate(script_data)
         if output_schema is QCReport:
+            if self.qc_status == "pass":
+                return output_schema.model_validate(
+                    valid_qc_pass_report_data(self.script_episode_number)
+                )
+            if self.qc_status == "fail":
+                return output_schema.model_validate(
+                    valid_qc_fail_report_data(self.script_episode_number)
+                )
             return output_schema.model_validate(
                 valid_qc_report_data(self.script_episode_number)
             )
@@ -315,6 +383,13 @@ class FakeLLMProvider:
                 data["character_arcs"].pop()
             return output_schema.model_validate(
                 data
+            )
+        if output_schema is WriterBrief:
+            episode_number = self.writer_brief_episode_number
+            if episode_number is None:
+                episode_number = self.script_episode_number
+            return output_schema.model_validate(
+                valid_writer_brief_data(episode_number=episode_number)
             )
         raise AssertionError(f"Unsupported output schema: {output_schema}")
 

@@ -26,6 +26,23 @@ def generate_showrunner(client: TestClient, project_id: int, provider=None):
     return client.post(f"{API_PREFIX}/projects/{project_id}/showrunner", json={})
 
 
+def generate_writer_brief(
+    client: TestClient,
+    project_id: int,
+    episode_number: int = 1,
+    provider=None,
+    target_duration_seconds: int = 90,
+):
+    default_provider = lambda: FakeLLMProvider(
+        writer_brief_episode_number=episode_number
+    )
+    app.dependency_overrides[get_configured_llm_provider] = provider or default_provider
+    return client.post(
+        f"{API_PREFIX}/projects/{project_id}/episodes/{episode_number}/writer-brief",
+        json={"target_duration_seconds": target_duration_seconds},
+    )
+
+
 def test_stable_json_sha256_ignores_dict_key_order() -> None:
     left = {"b": [2, 1], "a": {"y": "是", "x": 1}}
     right = {"a": {"x": 1, "y": "是"}, "b": [2, 1]}
@@ -136,5 +153,96 @@ def test_generate_showrunner_rejects_character_arc_set_not_matching_bibles(
     provider = lambda: FakeLLMProvider(showrunner_mode="add_arc")
 
     response = generate_showrunner(client, project_id, provider)
+
+    assert response.status_code == 502
+
+
+def test_generate_writer_brief_validates_persists_and_preserves_other_briefs(
+    client: TestClient, test_session_local
+) -> None:
+    project_id = create_outline_ready_project(client)
+    assert generate_characters(client, project_id).status_code == 200
+    assert generate_showrunner(client, project_id).status_code == 200
+
+    first = generate_writer_brief(client, project_id, episode_number=1)
+    second = generate_writer_brief(client, project_id, episode_number=2)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    first_brief = first.json()["brief"]
+    second_brief = second.json()["brief"]
+    assert first_brief["episode_number"] == 1
+    assert second_brief["episode_number"] == 2
+    assert second_brief["target_duration_seconds"] == 90
+    assert second_brief["required_beats"]
+    assert second_brief["forbidden_content"]
+
+    with test_session_local() as db:
+        project = db.get(Project, project_id)
+        showrunner = json.loads(project.showrunner_json)
+        assert set(showrunner["writer_briefs"]) == {"1", "2"}
+        assert showrunner["writer_briefs"]["1"] == first_brief
+        assert showrunner["writer_briefs"]["2"] == second_brief
+
+
+def test_get_saved_writer_brief(client: TestClient) -> None:
+    project_id = create_outline_ready_project(client)
+    assert generate_characters(client, project_id).status_code == 200
+    assert generate_showrunner(client, project_id).status_code == 200
+    assert generate_writer_brief(client, project_id, episode_number=1).status_code == 200
+
+    response = client.get(
+        f"{API_PREFIX}/projects/{project_id}/episodes/1/writer-brief"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["brief"]["episode_number"] == 1
+
+
+def test_get_writer_brief_returns_404_before_generation(client: TestClient) -> None:
+    project_id = create_outline_ready_project(client)
+    assert generate_characters(client, project_id).status_code == 200
+    assert generate_showrunner(client, project_id).status_code == 200
+
+    response = client.get(
+        f"{API_PREFIX}/projects/{project_id}/episodes/1/writer-brief"
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Writer brief not found"}
+
+
+def test_generate_writer_brief_returns_404_without_showrunner_state(
+    client: TestClient,
+) -> None:
+    project_id = create_outline_ready_project(client)
+    assert generate_characters(client, project_id).status_code == 200
+
+    response = generate_writer_brief(client, project_id, episode_number=1)
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Showrunner state not found"}
+
+
+def test_generate_writer_brief_returns_404_for_unknown_episode(
+    client: TestClient,
+) -> None:
+    project_id = create_outline_ready_project(client)
+    assert generate_characters(client, project_id).status_code == 200
+    assert generate_showrunner(client, project_id).status_code == 200
+
+    response = generate_writer_brief(client, project_id, episode_number=11)
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Episode not found in showrunner plan"}
+
+
+def test_generate_writer_brief_rejects_episode_mismatch(client: TestClient) -> None:
+    project_id = create_outline_ready_project(client)
+    assert generate_characters(client, project_id).status_code == 200
+    assert generate_showrunner(client, project_id).status_code == 200
+    provider = lambda: FakeLLMProvider(writer_brief_episode_number=2)
+
+    response = generate_writer_brief(client, project_id, episode_number=1, provider=provider)
 
     assert response.status_code == 502

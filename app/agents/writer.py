@@ -9,6 +9,7 @@ from app.schemas.character import CharacterBible
 from app.schemas.memory import StoryMemory
 from app.schemas.outline import EpisodeOutline, StoryOutline
 from app.schemas.script import EpisodeScript
+from app.schemas.showrunner import WriterBrief
 
 
 PROMPT_PATH = Path(__file__).resolve().parents[1] / "prompts" / "writer_v2.md"
@@ -67,6 +68,7 @@ class WriterAgent:
         target_duration_seconds: int,
         character_bibles: dict[str, CharacterBible] | None = None,
         story_memory: StoryMemory | None = None,
+        writer_brief: WriterBrief | None = None,
     ) -> EpisodeScript:
         characters = (
             [bible.model_dump(mode="json") for bible in character_bibles.values()]
@@ -106,6 +108,11 @@ class WriterAgent:
                 story_memory.model_dump(mode="json")
                 if story_memory is not None
                 else StoryMemory().model_dump(mode="json")
+            ),
+            "writer_brief": (
+                writer_brief.model_dump(mode="json")
+                if writer_brief is not None
+                else None
             ),
             "target_duration_seconds": target_duration_seconds,
         }

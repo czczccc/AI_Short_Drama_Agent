@@ -21,6 +21,9 @@ app.db
 # 媒体产物
 media/
 
+# 本地运行日志
+logs/
+
 .workbuddy/
 
 # Local database backups

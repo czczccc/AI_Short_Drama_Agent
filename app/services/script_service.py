@@ -1,9 +1,12 @@
 import json
+import time
 
 from sqlalchemy.orm import Session
 
 from app.agents.writer import WriterAgent
+from app.agents.qc import QCAgent
 from app.models.project import Project
+from app.observability.logging import duration_ms, log_event
 from app.providers.llm.base import LLMProvider
 from app.schemas.outline import EpisodeOutline, StoryOutline
 from app.schemas.script import EpisodeScript, ScriptGenerateRequest, ScriptResponse
@@ -15,6 +18,13 @@ from app.services.outline_service import (
     load_outline,
 )
 from app.services.project_service import get_project
+from app.services.showrunner_service import (
+    ShowrunnerEpisodeNotFoundError,
+    ShowrunnerStateNotFoundError,
+    WriterBriefNotFoundError,
+    get_writer_brief,
+    save_showrunner_qc_report,
+)
 
 
 class EpisodeNotFoundError(Exception):
@@ -23,6 +33,14 @@ class EpisodeNotFoundError(Exception):
 
 class ScriptNotFoundError(Exception):
     """Requested episode script has not been generated."""
+
+
+class ShowrunnerQCRequiresBriefError(Exception):
+    """Showrunner QC requires the script to be generated with a Writer Brief."""
+
+
+class ShowrunnerQCNotPassedError(Exception):
+    """Showrunner QC blocked the draft from becoming the official script."""
 
 
 def _find_episode(outline: StoryOutline, episode_number: int) -> EpisodeOutline:
@@ -52,8 +70,24 @@ def generate_script(
 
     outline = load_outline(project)
     episode_outline = _find_episode(outline, episode_number)
+    if data.run_showrunner_qc and not data.use_showrunner_brief:
+        raise ShowrunnerQCRequiresBriefError
+
     character_collection = load_character_bibles(project, outline)
     story_memory = load_story_memory(project)
+    writer_brief = None
+    if data.use_showrunner_brief:
+        writer_brief = get_writer_brief(db, project_id, episode_number).brief
+
+    started_at = time.perf_counter()
+    log_event(
+        "workflow.script.started",
+        project_id=project_id,
+        episode_number=episode_number,
+        use_showrunner_brief=data.use_showrunner_brief,
+        run_showrunner_qc=data.run_showrunner_qc,
+        target_duration_seconds=data.target_duration_seconds,
+    )
     script = WriterAgent(llm_provider).generate_script(
         story_outline=outline,
         episode_outline=episode_outline,
@@ -62,7 +96,48 @@ def generate_script(
             character_collection.characters if character_collection else None
         ),
         story_memory=story_memory,
+        writer_brief=writer_brief,
     )
+    log_event(
+        "workflow.script.draft_generated",
+        project_id=project_id,
+        episode_number=episode_number,
+        scene_count=len(script.scenes),
+        duration_ms=duration_ms(started_at),
+    )
+
+    if data.run_showrunner_qc:
+        qc_started_at = time.perf_counter()
+        qc_report = QCAgent(llm_provider).generate_report(
+            story_outline=outline,
+            episode_outline=episode_outline,
+            script=script,
+            character_bibles=(
+                character_collection.characters if character_collection else None
+            ),
+            story_memory=story_memory,
+            writer_brief=writer_brief,
+        )
+        save_showrunner_qc_report(project, episode_number, qc_report)
+        if qc_report.status != "pass":
+            db.commit()
+            log_event(
+                "workflow.showrunner_qc.blocked",
+                level="warning",
+                project_id=project_id,
+                episode_number=episode_number,
+                qc_status=qc_report.status,
+                issue_count=len(qc_report.issues),
+                duration_ms=duration_ms(qc_started_at),
+            )
+            raise ShowrunnerQCNotPassedError
+        log_event(
+            "workflow.showrunner_qc.passed",
+            project_id=project_id,
+            episode_number=episode_number,
+            issue_count=len(qc_report.issues),
+            duration_ms=duration_ms(qc_started_at),
+        )
 
     scripts = json.loads(project.scripts_json) if project.scripts_json else {}
     scripts[str(episode_number)] = script.model_dump(mode="json")
@@ -71,6 +146,12 @@ def generate_script(
     project.status = "script_ready"
     db.commit()
     db.refresh(project)
+    log_event(
+        "workflow.script.saved",
+        project_id=project.id,
+        episode_number=episode_number,
+        status=project.status,
+    )
 
     return ScriptResponse(
         project_id=project.id,

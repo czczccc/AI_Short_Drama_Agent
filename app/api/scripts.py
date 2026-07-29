@@ -12,8 +12,15 @@ from app.services.outline_service import OutlineNotReadyError, ProjectNotFoundEr
 from app.services.script_service import (
     EpisodeNotFoundError,
     ScriptNotFoundError,
+    ShowrunnerQCNotPassedError,
+    ShowrunnerQCRequiresBriefError,
     generate_script,
     get_script,
+)
+from app.services.showrunner_service import (
+    ShowrunnerEpisodeNotFoundError,
+    ShowrunnerStateNotFoundError,
+    WriterBriefNotFoundError,
 )
 
 
@@ -32,6 +39,25 @@ def _raise_script_http_error(exc: Exception) -> None:
         raise HTTPException(status_code=404, detail="Episode not found") from exc
     if isinstance(exc, ScriptNotFoundError):
         raise HTTPException(status_code=404, detail="Script not found") from exc
+    if isinstance(exc, ShowrunnerStateNotFoundError):
+        raise HTTPException(status_code=404, detail="Showrunner state not found") from exc
+    if isinstance(exc, ShowrunnerEpisodeNotFoundError):
+        raise HTTPException(
+            status_code=404,
+            detail="Episode not found in showrunner plan",
+        ) from exc
+    if isinstance(exc, WriterBriefNotFoundError):
+        raise HTTPException(status_code=404, detail="Writer brief not found") from exc
+    if isinstance(exc, ShowrunnerQCRequiresBriefError):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Showrunner QC requires writer brief",
+        ) from exc
+    if isinstance(exc, ShowrunnerQCNotPassedError):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Showrunner QC did not pass",
+        ) from exc
     raise exc
 
 
@@ -65,6 +91,11 @@ def create_script(
         ProjectNotFoundError,
         OutlineNotReadyError,
         EpisodeNotFoundError,
+        ShowrunnerStateNotFoundError,
+        ShowrunnerEpisodeNotFoundError,
+        WriterBriefNotFoundError,
+        ShowrunnerQCRequiresBriefError,
+        ShowrunnerQCNotPassedError,
     ) as exc:
         _raise_script_http_error(exc)
 

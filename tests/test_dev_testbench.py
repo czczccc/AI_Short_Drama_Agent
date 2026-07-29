@@ -32,6 +32,7 @@ def test_dev_testbench_is_not_in_openapi(client: TestClient) -> None:
 
     assert "/dev/testbench" not in paths
     assert "/dev/projects" not in paths
+    assert "/dev/logs" not in paths
     assert "/dev/projects/{project_id}" not in paths
     assert "/dev/projects/{project_id}/episodes/{episode_number}/qc" not in paths
 

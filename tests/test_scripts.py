@@ -32,13 +32,19 @@ def generate_script(
     project_id: int,
     episode_number: int = 1,
     provider=None,
+    use_showrunner_brief: bool = False,
+    run_showrunner_qc: bool = False,
 ):
     app.dependency_overrides[get_configured_llm_provider] = (
         provider or FakeLLMProvider
     )
     return client.post(
         f"/projects/{project_id}/episodes/{episode_number}/script",
-        json={"target_duration_seconds": 90},
+        json={
+            "target_duration_seconds": 90,
+            "use_showrunner_brief": use_showrunner_brief,
+            "run_showrunner_qc": run_showrunner_qc,
+        },
     )
 
 
@@ -363,3 +369,152 @@ def test_writer_uses_v2_prompt_with_continuity_guardrails(
     assert "临时发明" in writer_provider.last_system_prompt
     assert "触发瞬间" in writer_provider.last_system_prompt
     assert "不能写入 `characters` 数组" in writer_provider.last_system_prompt
+
+
+def test_writer_can_receive_saved_showrunner_brief_when_requested(
+    client: TestClient,
+) -> None:
+    project_id = create_outline_ready_project(client)
+    app.dependency_overrides[get_configured_llm_provider] = FakeLLMProvider
+    assert client.post(f"/projects/{project_id}/characters/generate", json={}).status_code == 200
+    assert client.post(f"/projects/{project_id}/showrunner", json={}).status_code == 200
+    assert (
+        client.post(
+            f"/projects/{project_id}/episodes/1/writer-brief",
+            json={"target_duration_seconds": 90},
+        ).status_code
+        == 200
+    )
+    writer_provider = FakeLLMProvider()
+
+    response = generate_script(
+        client,
+        project_id,
+        provider=lambda: writer_provider,
+        use_showrunner_brief=True,
+    )
+
+    assert response.status_code == 200
+    writer_input = json.loads(writer_provider.last_user_prompt)
+    assert writer_input["writer_brief"]["episode_number"] == 1
+    assert writer_input["writer_brief"]["required_beats"]
+    assert writer_input["writer_brief"]["forbidden_content"]
+
+
+def test_writer_brief_is_not_sent_when_flag_is_false(client: TestClient) -> None:
+    project_id = create_outline_ready_project(client)
+    writer_provider = FakeLLMProvider()
+
+    response = generate_script(
+        client,
+        project_id,
+        provider=lambda: writer_provider,
+        use_showrunner_brief=False,
+    )
+
+    assert response.status_code == 200
+    writer_input = json.loads(writer_provider.last_user_prompt)
+    assert writer_input["writer_brief"] is None
+
+
+def test_generate_script_with_showrunner_brief_requires_saved_brief(
+    client: TestClient,
+) -> None:
+    project_id = create_outline_ready_project(client)
+    app.dependency_overrides[get_configured_llm_provider] = FakeLLMProvider
+    assert client.post(f"/projects/{project_id}/characters/generate", json={}).status_code == 200
+    assert client.post(f"/projects/{project_id}/showrunner", json={}).status_code == 200
+
+    response = generate_script(
+        client,
+        project_id,
+        use_showrunner_brief=True,
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Writer brief not found"}
+
+
+def prepare_showrunner_brief_project(client: TestClient) -> int:
+    project_id = create_outline_ready_project(client)
+    app.dependency_overrides[get_configured_llm_provider] = FakeLLMProvider
+    assert client.post(f"/projects/{project_id}/characters/generate", json={}).status_code == 200
+    assert client.post(f"/projects/{project_id}/showrunner", json={}).status_code == 200
+    assert (
+        client.post(
+            f"/projects/{project_id}/episodes/1/writer-brief",
+            json={"target_duration_seconds": 90},
+        ).status_code
+        == 200
+    )
+    return project_id
+
+
+def test_showrunner_qc_pass_saves_script_memory_and_qc_report(
+    client: TestClient,
+    test_session_local,
+) -> None:
+    project_id = prepare_showrunner_brief_project(client)
+    provider = lambda: FakeLLMProvider(qc_status="pass")
+
+    response = generate_script(
+        client,
+        project_id,
+        provider=provider,
+        use_showrunner_brief=True,
+        run_showrunner_qc=True,
+    )
+
+    assert response.status_code == 200
+    with test_session_local() as db:
+        project = db.get(Project, project_id)
+        scripts = json.loads(project.scripts_json)
+        memory = json.loads(project.memory_json)
+        showrunner = json.loads(project.showrunner_json)
+        assert "1" in scripts
+        assert "1" in memory["episodes"]
+        assert showrunner["qc_reports"]["1"]["status"] == "pass"
+
+
+def test_showrunner_qc_fail_does_not_save_script_or_memory_but_stores_report(
+    client: TestClient,
+    test_session_local,
+) -> None:
+    project_id = prepare_showrunner_brief_project(client)
+    provider = lambda: FakeLLMProvider(qc_status="fail")
+
+    response = generate_script(
+        client,
+        project_id,
+        provider=provider,
+        use_showrunner_brief=True,
+        run_showrunner_qc=True,
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Showrunner QC did not pass"}
+    with test_session_local() as db:
+        project = db.get(Project, project_id)
+        assert project.scripts_json is None
+        assert project.memory_json is None
+        showrunner = json.loads(project.showrunner_json)
+        assert showrunner["qc_reports"]["1"]["status"] == "fail"
+
+    qc_response = client.get(f"/projects/{project_id}/episodes/1/showrunner-qc")
+    assert qc_response.status_code == 200
+    assert qc_response.json()["report"]["status"] == "fail"
+
+
+def test_showrunner_qc_requires_brief_mode(client: TestClient) -> None:
+    project_id = prepare_showrunner_brief_project(client)
+
+    response = generate_script(
+        client,
+        project_id,
+        provider=lambda: FakeLLMProvider(qc_status="pass"),
+        use_showrunner_brief=False,
+        run_showrunner_qc=True,
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Showrunner QC requires writer brief"}

@@ -15,6 +15,7 @@ from app.schemas.memory import StoryMemory
 from app.schemas.outline import EpisodeOutline, StoryOutline
 from app.schemas.qc import QCReport
 from app.schemas.script import EpisodeScript
+from app.schemas.showrunner import WriterBrief
 
 
 PROMPT_PATH = Path(__file__).resolve().parents[1] / "prompts" / "qc_v1.md"
@@ -33,6 +34,7 @@ class QCAgent:
         script: EpisodeScript,
         character_bibles: dict[str, CharacterBible] | None = None,
         story_memory: StoryMemory | None = None,
+        writer_brief: WriterBrief | None = None,
     ) -> QCReport:
         characters = (
             [bible.model_dump(mode="json") for bible in character_bibles.values()]
@@ -73,6 +75,11 @@ class QCAgent:
                 else StoryMemory().model_dump(mode="json")
             ),
             "script": script.model_dump(mode="json"),
+            "writer_brief": (
+                writer_brief.model_dump(mode="json")
+                if writer_brief is not None
+                else None
+            ),
         }
         generated_report = self._llm_provider.generate_structured(
             system_prompt=self._system_prompt,
@@ -101,4 +108,3 @@ class QCAgent:
             ]
             logger.warning("QC output context validation failed: issues=%s", issues)
             raise LLMResponseValidationError("LLM 返回 QC 报告与请求不一致") from exc
-

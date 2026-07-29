@@ -17,6 +17,7 @@ storyboard
 video_adapter
 
 qc
+showrunner
 
 
 每个Prompt包含：
@@ -82,3 +83,17 @@ LLM QC v1 使用 `app/prompts/qc_v1.md`。Prompt 要求：
 - 检查角色认知、角色动机、说话方式、行为边界、标志道具、证据、地点和时间线是否与角色设定及 Story Memory 冲突
 - 只输出合法 JSON，不包含 Markdown 或解释文字
 - 输出必须符合 `QCReport`，`status` 只能是 `pass`、`warning` 或 `fail`
+
+## Showrunner v1
+
+Phase 3.1 使用 `app/prompts/showrunner/v1.py`。Prompt 要求：
+
+- 只输出合法 JSON，不包含 Markdown 或解释文字
+- 所有文本内容使用中文，面向中文竖屏短剧
+- 根据已有 `story_outline` 和 `character_bibles` 生成整季总控状态
+- 不写单集剧本正文，不执行剧本 QC，不新增大纲之外的主要角色
+- `episode_plan` 必须正好包含第 1 到第 10 集
+- 每个角色的 `episode_beats` 必须正好包含第 1 到第 10 集
+- `version` 固定为 `showrunner_v1`
+- `source_outline_hash` 和 `source_characters_hash` 必须原样复制输入值；服务层会再次覆盖为本地稳定 SHA-256 结果
+- `writer_briefs` 与 `qc_reports` 本阶段固定为空对象

@@ -22,6 +22,7 @@ class Project(Base):
     characters_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     scripts_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     memory_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    showrunner_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=utcnow
     )

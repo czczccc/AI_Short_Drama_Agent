@@ -6,6 +6,7 @@ from app.schemas.character import CharacterBible, CharacterBibleCollection
 from app.schemas.outline import StoryOutline
 from app.schemas.qc import QCReport
 from app.schemas.script import EpisodeScript
+from app.schemas.showrunner import ShowrunnerState
 
 
 SchemaT = TypeVar("SchemaT", bound=BaseModel)
@@ -170,6 +171,68 @@ def valid_qc_report_data(episode_number: int = 1) -> dict:
     }
 
 
+def valid_showrunner_state_data(
+    source_outline_hash: str | None = None,
+    source_characters_hash: str | None = None,
+) -> dict:
+    outline = valid_outline_data()
+    characters = valid_character_bibles_data()
+    return {
+        "version": "showrunner_v1",
+        "source_outline_hash": source_outline_hash
+        or "0" * 64,
+        "source_characters_hash": source_characters_hash
+        or "1" * 64,
+        "story_bible": {
+            "series_title": outline["title"],
+            "logline": outline["logline"],
+            "genre": outline["genre"],
+            "tone": outline["tone"],
+            "world_rules": ["故事发生在当代中国人工智能创业语境中。"],
+            "canon_facts": ["林峰被开除后发现老板窃取了他的AI成果。"],
+            "core_conflict": outline["core_conflict"],
+            "main_mysteries": ["关键证据为何被持续销毁。"],
+            "forbidden_reveals": ["不得在前期提前确认最终证据结果。"],
+            "continuity_rules": ["每集只能展开该集大纲范围内的核心事件。"],
+        },
+        "episode_plan": [
+            {
+                "episode_number": episode["episode_number"],
+                "title": episode["title"],
+                "dramatic_function": f"推进第{episode['episode_number']}集调查压力。",
+                "must_include": [episode["summary"]],
+                "must_not_reveal": ["不得提前完成后续集的最终反转。"],
+                "setup": [episode["main_conflict"]],
+                "payoff": [f"兑现第{episode['episode_number']}集的阶段性冲突。"],
+                "ending_hook": episode["ending_hook"],
+                "allowed_new_facts": [episode["summary"]],
+            }
+            for episode in outline["episodes"]
+        ],
+        "character_arcs": [
+            {
+                "character_id": character_id,
+                "character_name": bible["name"],
+                "starting_state": f"{bible['name']}开局被核心冲突牵引。",
+                "ending_state": f"{bible['name']}季末必须完成与动机相关的选择。",
+                "episode_beats": [
+                    {
+                        "episode_number": number,
+                        "emotional_state": "紧张克制",
+                        "goal": f"完成第{number}集中的人物目标。",
+                        "change": f"在第{number}集中获得阶段性变化。",
+                        "knowledge_state": f"只知道第{number}集及之前已经发生的信息。",
+                    }
+                    for number in range(1, 11)
+                ],
+            }
+            for character_id, bible in characters.items()
+        ],
+        "writer_briefs": {},
+        "qc_reports": {},
+    }
+
+
 class FakeLLMProvider:
     def __init__(
         self,
@@ -178,6 +241,7 @@ class FakeLLMProvider:
         script_character_id: str = "lin_feng",
         script_duration_seconds: int = 90,
         character_mode: str = "valid",
+        showrunner_mode: str = "valid",
         script_dialogue_key: str = "dialogues",
     ) -> None:
         self.script_episode_number = script_episode_number
@@ -185,6 +249,7 @@ class FakeLLMProvider:
         self.script_character_id = script_character_id
         self.script_duration_seconds = script_duration_seconds
         self.character_mode = character_mode
+        self.showrunner_mode = showrunner_mode
         self.script_dialogue_key = script_dialogue_key
         self.last_system_prompt: str | None = None
         self.last_user_prompt: str | None = None
@@ -232,6 +297,24 @@ class FakeLLMProvider:
         if output_schema is QCReport:
             return output_schema.model_validate(
                 valid_qc_report_data(self.script_episode_number)
+            )
+        if output_schema is ShowrunnerState:
+            data = valid_showrunner_state_data(
+                source_outline_hash="0" * 64,
+                source_characters_hash="1" * 64,
+            )
+            if self.showrunner_mode == "add_arc":
+                data["character_arcs"].append(
+                    {
+                        **data["character_arcs"][0],
+                        "character_id": "new_person",
+                        "character_name": "新增人物",
+                    }
+                )
+            if self.showrunner_mode == "drop_arc":
+                data["character_arcs"].pop()
+            return output_schema.model_validate(
+                data
             )
         raise AssertionError(f"Unsupported output schema: {output_schema}")
 

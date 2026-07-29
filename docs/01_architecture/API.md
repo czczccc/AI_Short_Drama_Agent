@@ -333,6 +333,112 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/1/characters"
 
 项目必须已有有效大纲；同一集重新生成会覆盖该集旧剧本，不影响其他集。
 
+## 生成 Showrunner State
+
+### `POST /api/v1/projects/{project_id}/showrunner`
+
+Showrunner Agent 根据当前项目已保存的大纲和角色圣经生成整季总控状态。Phase 3.1 只生成 Story Bible、Episode Plan 和 Character Arc，不生成 Writer Brief，不接入 Writer，不执行 Showrunner QC。
+
+请求体：
+
+```json
+{}
+```
+
+也可以显式提交：
+
+```json
+{
+  "force_regenerate": false
+}
+```
+
+当前 `force_regenerate` 为预留字段；调用生成接口会以当前大纲和角色圣经重新生成并覆盖 `showrunner_json`，同时将预留的 `writer_briefs` 和 `qc_reports` 初始化为空对象。
+
+响应示例（数组仅节选；实际 `episode_plan` 为 10 集，每个角色的 `episode_beats` 为 10 集）：
+
+```json
+{
+  "project_id": 1,
+  "showrunner": {
+    "version": "showrunner_v1",
+    "source_outline_hash": "64位sha256字符串",
+    "source_characters_hash": "64位sha256字符串",
+    "story_bible": {
+      "series_title": "逆光代码",
+      "logline": "被开除的程序员发现老板窃取成果，决定夺回真相。",
+      "genre": "都市悬疑",
+      "tone": "紧张热血",
+      "world_rules": ["故事发生在当代中国人工智能创业语境中。"],
+      "canon_facts": ["林峰被开除后发现老板窃取了他的AI成果。"],
+      "core_conflict": "程序员必须在资本封锁下证明成果归属。",
+      "main_mysteries": ["关键证据为何被持续销毁。"],
+      "forbidden_reveals": ["不得在前期提前确认最终证据结果。"],
+      "continuity_rules": ["每集只能展开该集大纲范围内的核心事件。"]
+    },
+    "episode_plan": [
+      {
+        "episode_number": 1,
+        "title": "突然解雇",
+        "dramatic_function": "建立主角危机和整季追证目标。",
+        "must_include": ["林峰发现自己的成果被老板署名。"],
+        "must_not_reveal": ["不得确认最终证据结果。"],
+        "setup": ["旧电脑中出现匿名警告。"],
+        "payoff": ["林峰确认成果归属被篡改。"],
+        "ending_hook": "他在旧电脑里发现一条来自内部的匿名警告。",
+        "allowed_new_facts": ["林峰被开除。"]
+      }
+    ],
+    "character_arcs": [
+      {
+        "character_id": "lin_feng",
+        "character_name": "林峰",
+        "starting_state": "被动遭遇背叛，独自追查。",
+        "ending_state": "学会信任盟友并公开面对真相。",
+        "episode_beats": [
+          {
+            "episode_number": 1,
+            "emotional_state": "震惊但克制",
+            "goal": "确认成果是否被窃取。",
+            "change": "从被动失业转为主动取证。",
+            "knowledge_state": "知道成果署名异常，但不知道完整幕后链条。"
+          }
+        ]
+      }
+    ],
+    "writer_briefs": {},
+    "qc_reports": {}
+  }
+}
+```
+
+哈希说明：`source_outline_hash` 和 `source_characters_hash` 由服务端基于稳定排序后的 JSON 内容计算 SHA-256，不使用 Python 内置 `hash()`。
+
+常见错误：
+
+- `404`：项目不存在
+- `409`：项目大纲尚未就绪
+- `409`：角色圣经尚未就绪
+- `502`：LLM 调用、JSON 解析或 Schema 校验失败
+- `503`：LLM Provider 或 API Key 配置不可用
+
+## 查询 Showrunner State
+
+### `GET /api/v1/projects/{project_id}/showrunner`
+
+请求示例：
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/1/showrunner"
+```
+
+成功响应结构与“生成 Showrunner State”的响应示例相同。
+
+常见错误：
+
+- `404`：项目不存在
+- `404`：Showrunner State 尚未生成
+
 ## 查询已保存的单集剧本
 
 ### `GET /api/v1/projects/{project_id}/episodes/{episode_number}/script`

@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api import characters, dev, outlines, projects, scripts
+from app.api import characters, dev, outlines, projects, scripts, showrunner
 from app.configs.settings import get_settings
 from app.database.session import init_db
 from app.providers.llm.base import (
@@ -104,6 +104,7 @@ api_v1_router.include_router(projects.router)
 api_v1_router.include_router(outlines.router)
 api_v1_router.include_router(characters.router)
 api_v1_router.include_router(scripts.router)
+api_v1_router.include_router(showrunner.router)
 app.include_router(api_v1_router)
 app.include_router(dev.router, include_in_schema=False)
 
@@ -112,3 +113,4 @@ app.include_router(projects.router, include_in_schema=False)
 app.include_router(outlines.router, include_in_schema=False)
 app.include_router(characters.router, include_in_schema=False)
 app.include_router(scripts.router, include_in_schema=False)
+app.include_router(showrunner.router, include_in_schema=False)

@@ -28,7 +28,7 @@ AI 短剧生产系统：从创意输入到视频成片形成自动化工作流�
 - `app/schemas` —— Pydantic 模型
 - `app/services` —— 业务逻辑
 - `app/providers/llm` —— 通用 LLM Provider 与 DeepSeek 适配器
-- `app/agents` —— Director、Character 与 Writer Agent
+- `app/agents` —— Director、Character、Writer、QC 与 Showrunner Agent
 - `app/prompts` —— 版本化 Prompt
 - `data/` —— 本地 SQLite 数据库和数据库备份
 - `tests/` —— 测试
@@ -104,6 +104,23 @@ uvicorn app.api.main:app --reload
 应用启动时会重新创建 `data/app.db`。测试始终使用临时 SQLite 数据库，不会写入正式数据库。
 
 Phase 2C 启动时会为已有 SQLite `projects` 表幂等增加 `characters_json` 字段，无需删除已有开发库。
+
+Phase 3.1 启动时会为已有 SQLite `projects` 表幂等增加 `showrunner_json` 字段，无需删除已有开发库。Showrunner State 需要在大纲和角色圣经生成后创建：
+
+```powershell
+Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:8000/api/v1/projects/$($project.id)/showrunner" `
+  -ContentType "application/json" `
+  -Body "{}"
+```
+
+查询已保存的 Showrunner State：
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/$($project.id)/showrunner"
+```
+
+当前 Showrunner Phase 3.1 只生成 Story Bible、Episode Plan 和 Character Arc；暂不生成 Writer Brief、不接入 Writer、不执行 Showrunner QC。
 
 ## 运行测试
 

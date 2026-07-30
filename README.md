@@ -207,4 +207,4 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/$($project.id)/epi
 
 ## 文档
 
-前端调用契约见 `docs/01_architecture/API.md`；其他产品与设计文档见 `docs/` 目录。
+前端调用契约见 `docs/01_architecture/API.md`；如果想理解每个接口背后的调用链、读写字段、Agent 和日志事件，见 `docs/01_architecture/API_FLOW_MAP.md`；其他产品与设计文档见 `docs/` 目录。

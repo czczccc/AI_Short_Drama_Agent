@@ -2,16 +2,22 @@ import json
 
 from fastapi.testclient import TestClient
 
+from app.agents.showrunner import ShowrunnerAgent
 from app.api.main import app
 from app.models.project import Project
 from app.providers.llm.base import LLMCallError
 from app.providers.llm.factory import get_configured_llm_provider
+from app.schemas.character import CharacterBibleCollection
+from app.schemas.memory import StoryMemory
+from app.schemas.outline import StoryOutline
+from app.schemas.showrunner import ShowrunnerState
 from app.services.showrunner_service import stable_json_sha256
 from tests.fakes import (
     FakeLLMProvider,
     FailingLLMProvider,
     valid_character_bibles_data,
     valid_outline_data,
+    valid_showrunner_state_data,
 )
 from tests.test_characters import create_outline_ready_project, generate_characters
 
@@ -155,6 +161,53 @@ def test_generate_showrunner_rejects_character_arc_set_not_matching_bibles(
     response = generate_showrunner(client, project_id, provider)
 
     assert response.status_code == 502
+
+
+def test_showrunner_state_prompt_removes_duplicate_and_visual_character_data() -> None:
+    provider = FakeLLMProvider()
+
+    ShowrunnerAgent(provider).generate_showrunner_state(
+        outline=StoryOutline.model_validate(valid_outline_data()),
+        characters=CharacterBibleCollection.model_validate(
+            {"characters": valid_character_bibles_data()}
+        ),
+        source_outline_hash="0" * 64,
+        source_characters_hash="1" * 64,
+    )
+
+    assert provider.last_user_prompt is not None
+    outline_section = provider.last_user_prompt.split("story_outline:\n", 1)[1].split(
+        "\ncharacter_bibles:", 1
+    )[0]
+    assert '"characters"' not in outline_section
+    assert '"face_features"' not in provider.last_user_prompt
+    assert '"signature_props"' in provider.last_user_prompt
+
+
+def test_writer_brief_prompt_uses_adjacent_sparse_arc_turning_points() -> None:
+    data = valid_showrunner_state_data()
+    for arc in data["character_arcs"]:
+        arc["episode_beats"] = [
+            arc["episode_beats"][0],
+            arc["episode_beats"][4],
+            arc["episode_beats"][9],
+        ]
+    state = ShowrunnerState.model_validate(data)
+    provider = FakeLLMProvider(writer_brief_episode_number=3)
+
+    ShowrunnerAgent(provider).generate_writer_brief(
+        state=state,
+        episode_number=3,
+        story_memory=StoryMemory(),
+        target_duration_seconds=90,
+    )
+
+    assert provider.last_user_prompt is not None
+    assert '"current_episode_beat": null' in provider.last_user_prompt
+    assert '"latest_arc_beat"' in provider.last_user_prompt
+    assert '"next_arc_beat"' in provider.last_user_prompt
+    assert '"episode_number": 1' in provider.last_user_prompt
+    assert '"episode_number": 5' in provider.last_user_prompt
 
 
 def test_generate_writer_brief_validates_persists_and_preserves_other_briefs(

@@ -1,13 +1,22 @@
 import json
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.api.main import app
 from app.models.project import Project
+from app.observability.logging import configure_logging, read_recent_logs
 from app.providers.llm.base import LLMCallError
 from app.providers.llm.factory import get_configured_llm_provider
-from tests.fakes import FakeLLMProvider, FailingLLMProvider, valid_script_data
+from app.schemas.qc import QCReport
+from app.schemas.script import EpisodeScript
+from tests.fakes import (
+    FakeLLMProvider,
+    FailingLLMProvider,
+    valid_qc_report_data,
+    valid_script_data,
+)
 
 
 def create_project(client: TestClient) -> int:
@@ -34,6 +43,7 @@ def generate_script(
     provider=None,
     use_showrunner_brief: bool = False,
     run_showrunner_qc: bool = False,
+    max_revision_attempts: int = 0,
 ):
     app.dependency_overrides[get_configured_llm_provider] = (
         provider or FakeLLMProvider
@@ -44,6 +54,7 @@ def generate_script(
             "target_duration_seconds": 90,
             "use_showrunner_brief": use_showrunner_brief,
             "run_showrunner_qc": run_showrunner_qc,
+            "max_revision_attempts": max_revision_attempts,
         },
     )
 
@@ -179,6 +190,64 @@ def test_generate_script_rejects_llm_duration_outside_target_tolerance(
     response = generate_script(client, project_id, provider=provider)
 
     assert response.status_code == 502
+
+
+def test_writer_context_failure_logs_safe_reason_code(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    log_file = tmp_path / "app.jsonl"
+    configure_logging(str(log_file))
+    project_id = create_outline_ready_project(client)
+    provider = lambda: FakeLLMProvider(script_duration_seconds=95)
+
+    response = generate_script(client, project_id, provider=provider)
+
+    assert response.status_code == 502
+    records = read_recent_logs(log_file_path=str(log_file))
+    failed = next(
+        record
+        for record in records
+        if record["event"] == "workflow.writer.validation_failed"
+    )
+    assert failed["failure_reasons"] == ["duration_mismatch"]
+    assert failed["actual_duration_seconds"] == 95
+    assert failed["target_duration_seconds"] == 90
+    assert "script" not in failed
+
+
+def test_writer_retries_once_after_context_validation_failure(
+    client: TestClient,
+) -> None:
+    class RepairingWriterProvider(FakeLLMProvider):
+        def __init__(self) -> None:
+            super().__init__()
+            self.script_calls = 0
+
+        def generate_structured(self, system_prompt, user_prompt, output_schema):
+            if output_schema is EpisodeScript:
+                self.script_calls += 1
+                self.script_duration_seconds = (
+                    95 if self.script_calls == 1 else 90
+                )
+            return super().generate_structured(
+                system_prompt,
+                user_prompt,
+                output_schema,
+            )
+
+    project_id = create_outline_ready_project(client)
+    provider = RepairingWriterProvider()
+
+    response = generate_script(
+        client,
+        project_id,
+        provider=lambda: provider,
+    )
+
+    assert response.status_code == 200
+    assert provider.script_calls == 2
+    assert "duration_mismatch" in provider.last_user_prompt
 
 
 def test_generate_script_accepts_llm_singular_dialogue_key(
@@ -473,7 +542,10 @@ def test_showrunner_qc_pass_saves_script_memory_and_qc_report(
         showrunner = json.loads(project.showrunner_json)
         assert "1" in scripts
         assert "1" in memory["episodes"]
+        assert memory["episodes"]["1"]["source"] == "qc_approved"
+        assert memory["episodes"]["1"]["ending_state"]["location"]
         assert showrunner["qc_reports"]["1"]["status"] == "pass"
+        assert showrunner["qc_reports"]["1"]["approved_memory"]["source"] == "qc_approved"
 
 
 def test_showrunner_qc_fail_does_not_save_script_or_memory_but_stores_report(
@@ -518,3 +590,113 @@ def test_showrunner_qc_requires_brief_mode(client: TestClient) -> None:
 
     assert response.status_code == 409
     assert response.json() == {"detail": "Showrunner QC requires writer brief"}
+
+
+def test_showrunner_qc_rejects_invalid_revision_attempt_count(
+    client: TestClient,
+) -> None:
+    project_id = prepare_showrunner_brief_project(client)
+
+    response = generate_script(
+        client,
+        project_id,
+        provider=lambda: FakeLLMProvider(qc_status="pass"),
+        use_showrunner_brief=True,
+        run_showrunner_qc=True,
+        max_revision_attempts=3,
+    )
+
+    assert response.status_code == 422
+
+
+def test_showrunner_qc_can_revise_once_then_save_only_passing_script(
+    client: TestClient,
+    test_session_local,
+) -> None:
+    class RevisionProvider(FakeLLMProvider):
+        def __init__(self) -> None:
+            super().__init__(qc_status="fail")
+            self.qc_statuses = ["fail", "pass"]
+            self.writer_inputs: list[dict] = []
+
+        def generate_structured(self, system_prompt, user_prompt, output_schema):
+            if output_schema is QCReport:
+                self.qc_status = self.qc_statuses.pop(0)
+            if output_schema is EpisodeScript:
+                self.writer_inputs.append(json.loads(user_prompt))
+            return super().generate_structured(
+                system_prompt,
+                user_prompt,
+                output_schema,
+            )
+
+    project_id = prepare_showrunner_brief_project(client)
+    provider = RevisionProvider()
+
+    response = generate_script(
+        client,
+        project_id,
+        provider=lambda: provider,
+        use_showrunner_brief=True,
+        run_showrunner_qc=True,
+        max_revision_attempts=1,
+    )
+
+    assert response.status_code == 200
+    assert len(provider.writer_inputs) == 2
+    assert provider.writer_inputs[0]["revision_feedback"] is None
+    assert provider.writer_inputs[1]["revision_feedback"][0]["code"] == "future_reveal"
+    with test_session_local() as db:
+        project = db.get(Project, project_id)
+        showrunner = json.loads(project.showrunner_json)
+        memory = json.loads(project.memory_json)
+        assert showrunner["qc_reports"]["1"]["status"] == "pass"
+        assert memory["episodes"]["1"]["source"] == "qc_approved"
+
+
+def test_showrunner_qc_accumulates_feedback_across_revisions(
+    client: TestClient,
+) -> None:
+    class RevisionProvider(FakeLLMProvider):
+        def __init__(self) -> None:
+            super().__init__(qc_status="fail")
+            self.qc_call_number = 0
+            self.writer_inputs: list[dict] = []
+
+        def generate_structured(self, system_prompt, user_prompt, output_schema):
+            if output_schema is EpisodeScript:
+                self.writer_inputs.append(json.loads(user_prompt))
+            if output_schema is QCReport:
+                self.qc_call_number += 1
+                if self.qc_call_number == 1:
+                    self.qc_status = "fail"
+                elif self.qc_call_number == 2:
+                    data = valid_qc_report_data()
+                    data["issues"][0]["code"] = "opening_hook_not_realized"
+                    return QCReport.model_validate(data)
+                else:
+                    self.qc_status = "pass"
+            return super().generate_structured(
+                system_prompt,
+                user_prompt,
+                output_schema,
+            )
+
+    project_id = prepare_showrunner_brief_project(client)
+    provider = RevisionProvider()
+
+    response = generate_script(
+        client,
+        project_id,
+        provider=lambda: provider,
+        use_showrunner_brief=True,
+        run_showrunner_qc=True,
+        max_revision_attempts=2,
+    )
+
+    assert response.status_code == 200
+    assert len(provider.writer_inputs) == 3
+    third_feedback_codes = {
+        issue["code"] for issue in provider.writer_inputs[2]["revision_feedback"]
+    }
+    assert third_feedback_codes == {"future_reveal", "opening_hook_not_realized"}

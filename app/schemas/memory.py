@@ -1,4 +1,6 @@
-from pydantic import Field
+from typing import Literal
+
+from pydantic import Field, field_validator
 
 from app.schemas.outline import CharacterId, ChineseText
 from app.schemas.script import StrictScriptModel
@@ -10,6 +12,13 @@ class CharacterMemoryUpdate(StrictScriptModel):
     current_goal: ChineseText | None = None
     relationship_changes: list[ChineseText] = Field(default_factory=list)
 
+    @field_validator("current_goal", mode="before")
+    @classmethod
+    def normalize_blank_current_goal(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
 
 class PropEvidenceMemory(StrictScriptModel):
     name: ChineseText
@@ -18,8 +27,15 @@ class PropEvidenceMemory(StrictScriptModel):
     first_episode: int = Field(ge=1, le=10)
 
 
+class EpisodeEndingState(StrictScriptModel):
+    location: ChineseText
+    time_of_day: ChineseText
+    situation: ChineseText
+
+
 class EpisodeMemory(StrictScriptModel):
     episode_number: int = Field(ge=1, le=10)
+    source: Literal["rule_extracted", "qc_approved"] = "rule_extracted"
     summary: ChineseText
     new_facts: list[ChineseText] = Field(default_factory=list)
     revealed_secrets: list[ChineseText] = Field(default_factory=list)
@@ -28,8 +44,10 @@ class EpisodeMemory(StrictScriptModel):
         default_factory=dict
     )
     props_and_evidence: list[PropEvidenceMemory] = Field(default_factory=list)
+    ending_state: EpisodeEndingState | None = None
     ending_hook: ChineseText
 
 
 class StoryMemory(StrictScriptModel):
+    version: Literal["story_memory_v2"] = "story_memory_v2"
     episodes: dict[str, EpisodeMemory] = Field(default_factory=dict)

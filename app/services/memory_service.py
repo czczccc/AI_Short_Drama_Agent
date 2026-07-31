@@ -1,7 +1,12 @@
 import json
 
 from app.models.project import Project
-from app.schemas.memory import CharacterMemoryUpdate, EpisodeMemory, StoryMemory
+from app.schemas.memory import (
+    CharacterMemoryUpdate,
+    EpisodeEndingState,
+    EpisodeMemory,
+    StoryMemory,
+)
 from app.schemas.script import EpisodeScript
 
 
@@ -38,12 +43,18 @@ def build_episode_memory(script: EpisodeScript) -> EpisodeMemory:
         )
     return EpisodeMemory(
         episode_number=script.episode_number,
+        source="rule_extracted",
         summary=script.episode_goal,
         new_facts=[scene.scene_goal for scene in script.scenes],
         revealed_secrets=[],
         unresolved_questions=[script.ending_hook],
         character_updates=character_updates,
         props_and_evidence=[],
+        ending_state=EpisodeEndingState(
+            location=script.scenes[-1].location,
+            time_of_day=script.scenes[-1].time_of_day,
+            situation=script.scenes[-1].scene_goal,
+        ),
         ending_hook=script.ending_hook,
     )
 
@@ -51,6 +62,7 @@ def build_episode_memory(script: EpisodeScript) -> EpisodeMemory:
 def upsert_episode_memory(
     project: Project,
     script: EpisodeScript,
+    approved_memory: EpisodeMemory | None = None,
 ) -> StoryMemory:
     memory = load_story_memory(project)
     kept_episodes = {
@@ -58,7 +70,14 @@ def upsert_episode_memory(
         for episode_key, episode in memory.episodes.items()
         if episode.episode_number < script.episode_number
     }
-    episode_memory = build_episode_memory(script)
+    if (
+        approved_memory is not None
+        and approved_memory.episode_number != script.episode_number
+    ):
+        raise ValueError("approved_memory 与剧本集号不一致")
+    if approved_memory is not None and approved_memory.source != "qc_approved":
+        raise ValueError("approved_memory 的 source 必须为 qc_approved")
+    episode_memory = approved_memory or build_episode_memory(script)
     kept_episodes[str(script.episode_number)] = episode_memory
     updated_memory = StoryMemory(episodes=kept_episodes)
     project.memory_json = json.dumps(

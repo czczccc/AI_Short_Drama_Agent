@@ -116,6 +116,13 @@ class ScriptGenerateRequest(StrictScriptModel):
     target_duration_seconds: int = Field(default=90, ge=60, le=180)
     use_showrunner_brief: bool = False
     run_showrunner_qc: bool = False
+    max_revision_attempts: int = Field(default=0, ge=0, le=2)
+
+    @model_validator(mode="after")
+    def validate_revision_mode(self) -> "ScriptGenerateRequest":
+        if self.max_revision_attempts and not self.run_showrunner_qc:
+            raise ValueError("自动返修必须启用 Showrunner QC")
+        return self
 
 
 class ScriptResponse(StrictScriptModel):

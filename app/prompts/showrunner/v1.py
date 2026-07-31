@@ -19,8 +19,13 @@ SYSTEM_PROMPT = """你是中文竖屏短剧项目的 Showrunner Agent。
 - 所有文本内容使用中文。
 - 不新增故事大纲之外的主要角色。
 - 不改变角色 ID、角色姓名和基本定位。
+- character_arcs 必须覆盖 character_bibles 中的全部角色，每个 character_id 恰好出现一次，不得遗漏、重复或新增。
 - episode_plan 必须正好包含第 1 到第 10 集，episode_number 必须连续。
-- 每个 character_arc 的 episode_beats 必须正好包含第 1 到第 10 集。
+- 每集的 must_include、setup、payoff 和 allowed_new_facts 都必须至少包含一条非空中文内容，不得输出空数组。
+- 第 1 到第 9 集的 must_not_reveal 应明确后续边界；第 10 集没有后续内容时可以输出空数组。
+- 每个 character_arc 只记录 2 到 4 个真正发生人物目标、情绪、认知或关系变化的关键转折集。
+- episode_beats 必须按 episode_number 递增且不重复；没有转折的集不要填充占位 beat。
+- starting_state 和 ending_state 必须概括角色整季弧线，使没有专属 beat 的集也能据此保持一致。
 - writer_briefs 必须输出空对象 {}。
 - qc_reports 必须输出空对象 {}。
 - version 固定为 "showrunner_v1"。
@@ -77,4 +82,3 @@ JSON 结构：
   "qc_reports": {}
 }
 """
-

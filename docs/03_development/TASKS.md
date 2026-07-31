@@ -94,6 +94,14 @@
   - [x] QC 不通过时不写入正式 Story Memory
   - [x] QC 报告保存到 `showrunner_json.qc_reports`
   - [x] 查询已保存 Showrunner QC 报告 API
+- [x] Phase S3-5：QC v2 与 Story Memory v2
+  - [x] 规则型 QC 检查场景密度和场景角色一致性
+  - [x] LLM QC 检查钩子落地、末场承接、人物认知和道具状态
+  - [x] QC 通过时输出并保存 `approved_memory`
+  - [x] Story Memory 记录事实来源、道具状态和末场状态
+  - [x] 剧本生成支持最多两次显式自动返修
+  - [x] 多轮返修累积历史 QC 问题，避免修新问题时回归旧错误
+  - [x] 评测 Runner 默认开启 Showrunner QC 并整理最终 QC 报告
 
 
 ## Phase 4 后处理

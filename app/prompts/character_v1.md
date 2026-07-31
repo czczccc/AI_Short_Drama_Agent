@@ -18,6 +18,8 @@
 - 不增加星座、血型、MBTI、角色评分、无剧情作用的兴趣爱好或复杂心理学模型。
 - 只输出合法 JSON，不输出 Markdown 代码块或解释文字。
 - 字段名称和层级必须与下方结构完全一致，不得增加字段。
+- 每个角色对象都必须完整包含这些顶层字段，不得遗漏：`character_id`、`name`、`role`、`age`、`background`、`appearance`、`personality`、`motivation`、`fear`、`secret`、`speech_style`、`behavior_patterns`、`emotional_triggers`、`behavior_boundaries`、`relationships`、`character_arc`、`visual_identity`、`continuity_rules`。
+- 特别检查每个角色都已填写 `background`；不要因为多个角色背景相似而省略字段。
 
 输出结构示例（`characters` 中必须为输入的全部角色分别输出完整对象）：
 

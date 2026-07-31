@@ -26,7 +26,7 @@ class EpisodePlanItem(StrictShowrunnerModel):
     title: ChineseText
     dramatic_function: ChineseText
     must_include: list[ChineseText] = Field(min_length=1)
-    must_not_reveal: list[ChineseText] = Field(min_length=1)
+    must_not_reveal: list[ChineseText]
     setup: list[ChineseText] = Field(min_length=1)
     payoff: list[ChineseText] = Field(min_length=1)
     ending_hook: ChineseText
@@ -46,13 +46,16 @@ class CharacterArcPlan(StrictShowrunnerModel):
     character_name: ChineseText
     starting_state: ChineseText
     ending_state: ChineseText
-    episode_beats: list[CharacterArcBeat] = Field(min_length=10, max_length=10)
+    episode_beats: list[CharacterArcBeat] = Field(
+        default_factory=list,
+        max_length=10,
+    )
 
     @model_validator(mode="after")
     def validate_episode_beats_sequence(self) -> "CharacterArcPlan":
         numbers = [beat.episode_number for beat in self.episode_beats]
-        if numbers != list(range(1, 11)):
-            raise ValueError("character arc episode_number 必须从 1 连续到 10")
+        if numbers != sorted(set(numbers)):
+            raise ValueError("character arc episode_number 必须唯一且递增")
         return self
 
 
@@ -61,8 +64,8 @@ class WriterBriefCharacterState(StrictShowrunnerModel):
     character_name: ChineseText
     current_goal: ChineseText
     emotional_state: ChineseText
-    knows: list[ChineseText] = Field(min_length=1)
-    must_not_know: list[ChineseText] = Field(min_length=1)
+    knows: list[ChineseText]
+    must_not_know: list[ChineseText]
 
 
 class WriterBrief(StrictShowrunnerModel):
@@ -72,7 +75,7 @@ class WriterBrief(StrictShowrunnerModel):
     required_beats: list[ChineseText] = Field(min_length=1)
     forbidden_content: list[ChineseText] = Field(min_length=1)
     character_states: list[WriterBriefCharacterState] = Field(min_length=1)
-    continuity_context: list[ChineseText] = Field(min_length=1)
+    continuity_context: list[ChineseText]
     props_and_evidence: list[ChineseText] = Field(min_length=1)
     ending_requirement: ChineseText
     target_duration_seconds: int = Field(ge=30, le=600)

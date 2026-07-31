@@ -21,20 +21,52 @@ class ShowrunnerAgent:
         source_outline_hash: str,
         source_characters_hash: str,
     ) -> ShowrunnerState:
+        outline_input = outline.model_dump(
+            mode="json",
+            exclude={"characters"},
+        )
+        character_input = {
+            character_id: {
+                "character_id": bible.character_id,
+                "name": bible.name,
+                "role": bible.role,
+                "age": bible.age,
+                "background": bible.background,
+                "personality": bible.personality,
+                "motivation": bible.motivation,
+                "fear": bible.fear,
+                "secret": bible.secret,
+                "speech_style": bible.speech_style,
+                "behavior_patterns": bible.behavior_patterns,
+                "emotional_triggers": bible.emotional_triggers,
+                "behavior_boundaries": bible.behavior_boundaries,
+                "relationships": [
+                    relationship.model_dump(mode="json")
+                    for relationship in bible.relationships
+                ],
+                "character_arc": bible.character_arc,
+                "signature_props": bible.visual_identity.signature_props,
+                "continuity_rules": bible.continuity_rules.model_dump(mode="json"),
+            }
+            for character_id, bible in characters.characters.items()
+        }
         user_prompt = "\n".join(
             [
                 f"source_outline_hash: {source_outline_hash}",
                 f"source_characters_hash: {source_characters_hash}",
                 "story_outline:",
-                outline.model_dump_json(),
-                "character_bibles:",
                 json.dumps(
-                    {
-                        character_id: bible.model_dump(mode="json")
-                        for character_id, bible in characters.characters.items()
-                    },
+                    outline_input,
                     ensure_ascii=False,
                     sort_keys=True,
+                    separators=(",", ":"),
+                ),
+                "character_bibles:",
+                json.dumps(
+                    character_input,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
                 ),
                 "请严格按照系统提示输出 Showrunner State JSON。",
             ]
@@ -60,9 +92,28 @@ class ShowrunnerAgent:
         relevant_character_arcs = []
         for arc in state.character_arcs:
             current_beat = next(
-                beat
-                for beat in arc.episode_beats
-                if beat.episode_number == episode_number
+                (
+                    beat
+                    for beat in arc.episode_beats
+                    if beat.episode_number == episode_number
+                ),
+                None,
+            )
+            latest_arc_beat = next(
+                (
+                    beat
+                    for beat in reversed(arc.episode_beats)
+                    if beat.episode_number < episode_number
+                ),
+                None,
+            )
+            next_arc_beat = next(
+                (
+                    beat
+                    for beat in arc.episode_beats
+                    if beat.episode_number > episode_number
+                ),
+                None,
             )
             relevant_character_arcs.append(
                 {
@@ -70,7 +121,21 @@ class ShowrunnerAgent:
                     "character_name": arc.character_name,
                     "starting_state": arc.starting_state,
                     "ending_state": arc.ending_state,
-                    "current_episode_beat": current_beat.model_dump(mode="json"),
+                    "current_episode_beat": (
+                        current_beat.model_dump(mode="json")
+                        if current_beat is not None
+                        else None
+                    ),
+                    "latest_arc_beat": (
+                        latest_arc_beat.model_dump(mode="json")
+                        if latest_arc_beat is not None
+                        else None
+                    ),
+                    "next_arc_beat": (
+                        next_arc_beat.model_dump(mode="json")
+                        if next_arc_beat is not None
+                        else None
+                    ),
                 }
             )
 

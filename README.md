@@ -140,7 +140,7 @@ Invoke-RestMethod -Method Post `
 Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/$($project.id)/showrunner"
 ```
 
-当前 Showrunner Phase 3.1 只生成 Story Bible、Episode Plan 和 Character Arc；暂不生成 Writer Brief、不接入 Writer、不执行 Showrunner QC。
+当前 Showrunner 已完成 State、Writer Brief、Writer 接入、QC 门禁、Story Memory v2 和有限自动返修。
 
 Phase 3.2 可为指定集生成 Writer Brief：
 
@@ -185,6 +185,7 @@ $scriptBody = @{
   target_duration_seconds = 90
   use_showrunner_brief = $true
   run_showrunner_qc = $true
+  max_revision_attempts = 1
 } | ConvertTo-Json
 
 Invoke-RestMethod -Method Post `
@@ -193,7 +194,7 @@ Invoke-RestMethod -Method Post `
   -Body $scriptBody
 ```
 
-QC 只有 `pass` 时才会保存正式剧本并更新 Story Memory；`warning` 或 `fail` 会阻断保存，但 QC 报告仍可查询：
+系统先执行规则型 QC，再执行 LLM Showrunner QC。QC 只有 `pass` 时才会保存正式剧本，并用审核后的 `approved_memory` 更新 Story Memory v2；`warning` 或 `fail` 会触发最多 `max_revision_attempts` 次返修，达到上限仍未通过则阻断保存。QC 报告仍可查询：
 
 ```powershell
 Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/$($project.id)/episodes/1/showrunner-qc"

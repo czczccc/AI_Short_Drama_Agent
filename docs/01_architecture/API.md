@@ -292,7 +292,8 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/1/characters"
 {
   "target_duration_seconds": 90,
   "use_showrunner_brief": false,
-  "run_showrunner_qc": false
+  "run_showrunner_qc": false,
+  "max_revision_attempts": 0
 }
 ```
 
@@ -334,7 +335,11 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/1/characters"
 }
 ```
 
-项目必须已有有效大纲；同一集重新生成会覆盖该集旧剧本，不影响其他集。`use_showrunner_brief` 默认为 `false`，保持旧流程；设置为 `true` 时，系统会读取已保存的当前集 Writer Brief 并传给 Writer Agent，Brief 不存在时返回错误，不会自动生成 Brief。`run_showrunner_qc` 默认为 `false`；设置为 `true` 时，系统会先把 Writer 输出当作 draft 交给 Showrunner QC，只有 QC `status` 为 `pass` 时才保存正式剧本并更新 Story Memory。QC 为 `warning` 或 `fail` 时，接口返回 `409`，不写入 `scripts_json` 或 `memory_json`，但会把 QC 报告保存到 `showrunner_json.qc_reports`。
+项目必须已有有效大纲；同一集重新生成会覆盖该集旧剧本，不影响其他集。`use_showrunner_brief` 默认为 `false`，保持旧流程；设置为 `true` 时，系统会读取已保存的当前集 Writer Brief 并传给 Writer Agent，Brief 不存在时返回错误，不会自动生成 Brief。
+
+`run_showrunner_qc` 默认为 `false`；设置为 `true` 时，系统先执行规则型 QC，再执行 LLM Showrunner QC。只有最终 `status=pass` 时才保存正式剧本，并使用 QC 输出的 `approved_memory` 更新 Story Memory v2。`warning` 或 `fail` 不写入正式剧本和 Story Memory。
+
+`max_revision_attempts` 默认为 `0`，范围为 `0–2`，只有 `run_showrunner_qc=true` 时可用。大于 `0` 时，系统把 QC 问题作为 `revision_feedback` 交给 Writer 重新生成，直到通过或达到上限。多次返修会累积并去重此前全部问题，避免修复新问题时重新引入旧错误。被拒绝的 draft 不保存正文；每次尝试只在结构化日志中记录尝试序号、状态和安全问题码。Showrunner State 只保存该集最近一次 QC 报告。
 
 常见错误：
 
@@ -345,7 +350,7 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/1/characters"
 - `409`：项目大纲尚未就绪
 - `409`：`run_showrunner_qc=true` 但未开启 `use_showrunner_brief`
 - `409`：Showrunner QC 未通过，draft 未保存
-- `422`：请求参数错误
+- `422`：请求参数错误，例如返修次数超过 2，或未启用 QC 却请求自动返修
 - `502`：LLM 调用、JSON 解析或 Schema 校验失败
 - `503`：LLM Provider 或 API Key 配置不可用
 
@@ -353,7 +358,7 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/1/characters"
 
 ### `POST /api/v1/projects/{project_id}/showrunner`
 
-Showrunner Agent 根据当前项目已保存的大纲和角色圣经生成整季总控状态。Phase 3.1 只生成 Story Bible、Episode Plan 和 Character Arc，不生成 Writer Brief，不接入 Writer，不执行 Showrunner QC。
+Showrunner Agent 根据当前项目已保存的大纲和角色圣经生成整季总控状态。该接口本身只生成 Story Bible、Episode Plan 和 Character Arc；Writer Brief 和 QC 报告由对应的分集接口按需生成并写回该状态。
 
 请求体：
 
@@ -371,7 +376,7 @@ Showrunner Agent 根据当前项目已保存的大纲和角色圣经生成整季
 
 当前 `force_regenerate` 为预留字段；调用生成接口会以当前大纲和角色圣经重新生成并覆盖 `showrunner_json`，同时将预留的 `writer_briefs` 和 `qc_reports` 初始化为空对象。
 
-响应示例（数组仅节选；实际 `episode_plan` 为 10 集，每个角色的 `episode_beats` 为 10 集）：
+响应示例（数组仅节选；实际 `episode_plan` 为 10 集，每个角色的 `episode_beats` 只记录稀疏关键转折，Prompt 目标通常为 2–4 项）：
 
 ```json
 {
@@ -430,6 +435,10 @@ Showrunner Agent 根据当前项目已保存的大纲和角色圣经生成整季
 
 哈希说明：`source_outline_hash` 和 `source_characters_hash` 由服务端基于稳定排序后的 JSON 内容计算 SHA-256，不使用 Python 内置 `hash()`。
 
+`episode_beats` 是稀疏关键转折，不要求每集都有一项；字段保留以兼容旧状态。旧的 10 集完整 beat 数据仍可读取。生成 Writer Brief 时，如果当前集没有专属 beat，系统会提供此前最近转折、下一次未来转折以及角色整季起止状态，由模型结合当前集 Episode Plan 推导本集状态；未来转折只作为边界，不会被视为已发生事实。
+
+`must_not_reveal` 在第 1–9 集用于记录不能提前揭示的后续内容；第 10 集没有后续剧情边界时允许为空数组。
+
 常见错误：
 
 - `404`：项目不存在
@@ -459,7 +468,7 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/1/showrunner"
 
 ### `POST /api/v1/projects/{project_id}/episodes/{episode_number}/writer-brief`
 
-Showrunner Agent 根据已保存的 Showrunner State、指定集 Episode Plan、角色弧线和 Story Memory，为第 N 集生成写作 Brief。Phase 3.2 只生成和保存 Brief，不接入 Writer，不生成剧本，不执行 Showrunner QC。
+Showrunner Agent 根据已保存的 Showrunner State、指定集 Episode Plan、角色弧线和 Story Memory，为第 N 集生成并保存写作 Brief。生成剧本时可用 `use_showrunner_brief=true` 将该 Brief 交给 Writer，并可同时开启 Showrunner QC。
 
 请求示例：
 
@@ -527,6 +536,10 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/1/episodes/1/write
 
 成功响应结构与“生成 Writer Brief”的响应示例相同。
 
+角色状态中的 `knows` 和 `must_not_know` 只记录有明确依据的认知边界；确实没有相应信息时允许为空数组，系统不会要求模型编造占位事实。
+
+`continuity_context` 只允许引用正式 Story Memory；第 1 集或没有可承接事实时允许为空数组。
+
 常见错误：
 
 - `404`：项目不存在
@@ -564,10 +577,13 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/1/episodes/1/showr
         "message": "草稿提前确认最终证据结果，违反本集 Brief。",
         "suggestion": "删除最终答案，只保留触发下一步追查的悬念。"
       }
-    ]
+    ],
+    "approved_memory": null
   }
 }
 ```
+
+QC 通过时 `issues` 为空，`approved_memory` 包含从实际场景审核得到的本集事实、人物认知、道具状态和末场状态，其 `source` 固定为 `qc_approved`。`warning` 或 `fail` 时该字段为 `null`。
 
 常见错误：
 
@@ -640,7 +656,7 @@ Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/dev/projects/1/episod
 
 ### `GET /dev/logs`
 
-读取最近的本地 JSONL 日志。日志只记录请求和工作流元数据，例如 `event`、`request_id`、`project_id`、`episode_number`、状态码和耗时；不会记录 API Key、完整 Prompt 或完整剧本正文。
+读取最近的本地 JSONL 日志。日志只记录请求和工作流元数据，例如 `event`、`request_id`、`project_id`、`episode_number`、状态码、耗时和安全的失败原因码；不会记录 API Key、完整 Prompt 或完整剧本正文。
 
 查询参数：
 

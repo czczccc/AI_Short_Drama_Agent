@@ -8,6 +8,7 @@ from app.providers.llm.base import LLMProvider
 from app.schemas.qc import QCReport
 from app.schemas.script import EpisodeScript
 from app.services.character_service import load_character_bibles
+from app.services.continuity_qc import evaluate_script_rules, merge_qc_report
 from app.services.memory_service import load_story_memory
 from app.services.outline_service import (
     ProjectNotFoundError,
@@ -51,7 +52,11 @@ def generate_episode_qc(
         raise ScriptNotFoundError from exc
 
     character_collection = load_character_bibles(project, outline)
-    return QCAgent(llm_provider).generate_report(
+    rule_issues = evaluate_script_rules(
+        script,
+        target_duration_seconds=script.duration_seconds,
+    )
+    report = QCAgent(llm_provider).generate_report(
         story_outline=outline,
         episode_outline=episode_outline,
         script=script,
@@ -59,4 +64,6 @@ def generate_episode_qc(
             character_collection.characters if character_collection else None
         ),
         story_memory=load_story_memory(project),
+        rule_issues=rule_issues,
     )
+    return merge_qc_report(report, rule_issues)

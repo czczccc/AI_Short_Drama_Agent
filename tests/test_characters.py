@@ -6,6 +6,7 @@ from app.api.main import app
 from app.models.project import Project
 from app.providers.llm.base import LLMCallError
 from app.providers.llm.factory import get_configured_llm_provider
+from app.schemas.character import CharacterBibleCollection
 from tests.fakes import FakeLLMProvider, FailingLLMProvider
 
 
@@ -176,3 +177,31 @@ def test_generate_characters_rejects_model_missing_character(
     response = generate_characters(client, project_id, provider)
 
     assert response.status_code == 502
+
+
+def test_generate_characters_retries_once_after_context_mismatch(
+    client: TestClient,
+) -> None:
+    project_id = create_outline_ready_project(client)
+
+    class RepairingCharacterProvider(FakeLLMProvider):
+        def __init__(self) -> None:
+            super().__init__()
+            self.character_calls = 0
+
+        def generate_structured(self, system_prompt, user_prompt, output_schema):
+            if output_schema is CharacterBibleCollection:
+                self.character_calls += 1
+                self.character_mode = "add" if self.character_calls == 1 else "valid"
+            return super().generate_structured(
+                system_prompt,
+                user_prompt,
+                output_schema,
+            )
+
+    provider = RepairingCharacterProvider()
+    response = generate_characters(client, project_id, lambda: provider)
+
+    assert response.status_code == 200
+    assert provider.character_calls == 2
+    assert "unexpected_character_ids" in provider.last_user_prompt

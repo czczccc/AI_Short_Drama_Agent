@@ -13,7 +13,7 @@ from app.providers.llm.base import LLMProvider, LLMResponseValidationError
 from app.schemas.character import CharacterBible
 from app.schemas.memory import StoryMemory
 from app.schemas.outline import EpisodeOutline, StoryOutline
-from app.schemas.qc import QCReport
+from app.schemas.qc import QCIssue, QCReport
 from app.schemas.script import EpisodeScript
 from app.schemas.showrunner import WriterBrief
 
@@ -35,6 +35,7 @@ class QCAgent:
         character_bibles: dict[str, CharacterBible] | None = None,
         story_memory: StoryMemory | None = None,
         writer_brief: WriterBrief | None = None,
+        rule_issues: list[QCIssue] | None = None,
     ) -> QCReport:
         characters = (
             [bible.model_dump(mode="json") for bible in character_bibles.values()]
@@ -80,6 +81,9 @@ class QCAgent:
                 if writer_brief is not None
                 else None
             ),
+            "rule_issues": [
+                issue.model_dump(mode="json") for issue in (rule_issues or [])
+            ],
         }
         generated_report = self._llm_provider.generate_structured(
             system_prompt=self._system_prompt,
@@ -92,6 +96,7 @@ class QCAgent:
                 generated_report.model_dump(mode="json"),
                 context={
                     "expected_episode_number": episode_outline.episode_number,
+                    "require_approved_memory": True,
                 },
             )
         except ValidationError as exc:

@@ -168,6 +168,7 @@ def valid_qc_report_data(episode_number: int = 1) -> dict:
                 "suggestion": "保留发现证据的悬念，不要在本集确认最终结论。",
             }
         ],
+        "approved_memory": None,
     }
 
 
@@ -177,6 +178,36 @@ def valid_qc_pass_report_data(episode_number: int = 1) -> dict:
         "status": "pass",
         "summary": "剧本符合当前集 Brief、连续性和分集边界要求。",
         "issues": [],
+        "approved_memory": {
+            "episode_number": episode_number,
+            "source": "qc_approved",
+            "summary": "林峰在机房完成取证，并看到日志中的异常名字。",
+            "new_facts": ["林峰已经复制关键文件。"],
+            "revealed_secrets": [],
+            "unresolved_questions": ["日志中的名字为何出现。"],
+            "character_updates": {
+                "lin_feng": {
+                    "appears": True,
+                    "knows": ["关键文件已复制。"],
+                    "current_goal": "查明日志中的异常名字。",
+                    "relationship_changes": [],
+                }
+            },
+            "props_and_evidence": [
+                {
+                    "name": "关键文件",
+                    "owner": "林峰",
+                    "status": "已复制到离线设备",
+                    "first_episode": episode_number,
+                }
+            ],
+            "ending_state": {
+                "location": "人工智能公司机房",
+                "time_of_day": "深夜",
+                "situation": "林峰看到文件中出现苏妍父亲的名字。",
+            },
+            "ending_hook": "日志中的名字为何出现。",
+        },
     }
 
 
@@ -194,6 +225,7 @@ def valid_qc_fail_report_data(episode_number: int = 1) -> dict:
                 "suggestion": "删除最终答案，只保留触发下一步追查的悬念。",
             }
         ],
+        "approved_memory": None,
     }
 
 

@@ -24,6 +24,9 @@ media/
 # 本地运行日志
 logs/
 
+# 本地评测输出
+eval_outputs/
+
 .workbuddy/
 
 # Local database backups

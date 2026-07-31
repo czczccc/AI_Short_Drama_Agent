@@ -1,8 +1,38 @@
-from typing import Literal
+from typing import Literal, get_args
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 from app.schemas.outline import ChineseText
+from app.schemas.memory import EpisodeMemory
+
+
+QCIssueCode = Literal[
+    "future_boundary_risk",
+    "future_reveal",
+    "outline_scope_violation",
+    "required_beat_missing",
+    "forbidden_content",
+    "previous_ending_not_continued",
+    "opening_hook_not_realized",
+    "ending_hook_not_realized",
+    "character_knowledge_conflict",
+    "character_behavior_conflict",
+    "prop_state_conflict",
+    "prop_appeared_too_early",
+    "timeline_discontinuity",
+    "episode_overloaded",
+    "scene_character_mismatch",
+    "storyboard_structure_risk",
+    "other",
+]
+KNOWN_QC_ISSUE_CODES = frozenset(get_args(QCIssueCode))
 
 
 class StrictQCModel(BaseModel):
@@ -12,9 +42,16 @@ class StrictQCModel(BaseModel):
 class QCIssue(StrictQCModel):
     episode_number: int = Field(ge=1, le=10)
     severity: Literal["info", "warning", "error"]
-    code: str = Field(min_length=1)
+    code: QCIssueCode
     message: ChineseText
     suggestion: ChineseText | None = None
+
+    @field_validator("code", mode="before")
+    @classmethod
+    def normalize_unknown_code(cls, value: object) -> object:
+        if isinstance(value, str) and value not in KNOWN_QC_ISSUE_CODES:
+            return "other"
+        return value
 
 
 class QCReport(StrictQCModel):
@@ -22,6 +59,7 @@ class QCReport(StrictQCModel):
     status: Literal["pass", "warning", "fail"]
     summary: ChineseText
     issues: list[QCIssue] = Field(default_factory=list)
+    approved_memory: EpisodeMemory | None = None
 
     @model_validator(mode="after")
     def validate_report_context(self, info: ValidationInfo) -> "QCReport":
@@ -38,5 +76,45 @@ class QCReport(StrictQCModel):
         ]
         if mismatched_issues:
             raise ValueError("issues 中的 episode_number 必须与报告一致")
-        return self
 
+        if any(issue.severity == "error" for issue in self.issues):
+            expected_status = "fail"
+        elif self.issues:
+            expected_status = "warning"
+        else:
+            expected_status = "pass"
+        if self.status != expected_status:
+            raise ValueError(
+                f"status 必须与 issues 严重级别一致，当前应为 {expected_status}"
+            )
+
+        if (
+            self.approved_memory is not None
+            and self.approved_memory.episode_number != self.episode_number
+        ):
+            raise ValueError("approved_memory 必须与报告集号一致")
+        if (
+            self.approved_memory is not None
+            and self.approved_memory.source != "qc_approved"
+        ):
+            raise ValueError("approved_memory 的 source 必须为 qc_approved")
+        if self.status != "pass" and self.approved_memory is not None:
+            raise ValueError("只有通过的 QC 报告可以包含 approved_memory")
+        require_approved_memory = (info.context or {}).get(
+            "require_approved_memory",
+            False,
+        )
+        if (
+            require_approved_memory
+            and self.status == "pass"
+            and self.approved_memory is None
+        ):
+            raise ValueError("QC 通过时必须提供 approved_memory")
+        if (
+            require_approved_memory
+            and self.status == "pass"
+            and self.approved_memory is not None
+            and self.approved_memory.ending_state is None
+        ):
+            raise ValueError("QC 通过时 approved_memory 必须包含 ending_state")
+        return self

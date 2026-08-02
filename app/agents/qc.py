@@ -21,6 +21,7 @@ from app.services.qc_grounding import (
     QCReportGroundingError,
     build_scene_evidence_catalog,
     complete_missing_continuity_obligations,
+    normalize_carried_obligation_sources,
     normalize_surplus_memory_evidence,
     validate_qc_report_grounding,
 )
@@ -43,9 +44,18 @@ def _build_correction_instructions(issues: list[dict]) -> list[str]:
             instructions.append(
                 f"义务 {obligation_id} 被标记为 carried_forward 但未写回本集 "
                 "approved_memory.continuity_obligations。必须把同一 obligation_id 写入本集 "
-                "continuity_obligations，source_episode_number 为当前集号、due_episode_number 为下一集号，"
+                "continuity_obligations，source_episode_number 为当前集号、due_episode_number 为下一集号"
+                "（后端会按上一集合同恢复原始来源集），"
                 "source_memory_path 使用本集 approved_memory 中真实存在的路径，"
                 "并为该义务提供一条本集 memory_evidence（从 evidence_catalog 逐字复制）。"
+            )
+        elif issue_type == "overdue_obligation_must_resolve":
+            obligation_id = issue.get("obligation_id")
+            source_episode = issue.get("source_episode_number")
+            instructions.append(
+                f"义务 {obligation_id}（来源第 {source_episode} 集）已欠账超过 2 集，"
+                "本集必须将其标记为 resolved（在剧本中真正解决该事项并给出逐字证据），"
+                "不得再标记为 carried_forward。"
             )
         elif issue_type == "missing_memory_evidence":
             paths = issue.get("memory_paths") or []
@@ -136,7 +146,7 @@ class QCAgent:
         }
         original_user_prompt = json.dumps(input_data, ensure_ascii=False)
         current_user_prompt = original_user_prompt
-        for attempt_number in range(1, 3):
+        for attempt_number in range(1, 4):
             generated_report = self._llm_provider.generate_structured(
                 system_prompt=self._system_prompt,
                 user_prompt=current_user_prompt,
@@ -162,11 +172,15 @@ class QCAgent:
                     script,
                     writer_brief,
                 )
+                validated_report = normalize_carried_obligation_sources(
+                    validated_report,
+                    writer_brief,
+                )
                 return validated_report
             except (ValidationError, QCReportGroundingError) as exc:
                 issues = self._safe_validation_issues(exc)
                 failure_reasons = sorted({issue["type"] for issue in issues})
-                if attempt_number == 1:
+                if attempt_number < 3:
                     log_event(
                         "workflow.qc.context_retrying",
                         level="warning",

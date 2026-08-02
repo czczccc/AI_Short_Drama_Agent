@@ -1398,3 +1398,113 @@
 - Codex review is no longer a required gate for task status, continuation, commit, or planned real-model validation.
 - DeepSeek must preserve the existing text-only scope, dependency chain, test gates, atomic-save rules, bounded real retries and append-only evidence log.
 - Non-text expansion, changed product/score criteria, secrets and destructive actions still require explicit user approval.
+
+## 2026-08-02 14:05 — execution — S3-7B-项目2（午夜丢失的手机）ep5-blocked 记录
+
+- Executor: DeepSeek（用户授权连续生成 10 集，中间不询问）
+- Result: blocked（第 5 集 3 次失败后停止，不无限重试）
+
+### 进度
+
+- 项目 id=2「午夜丢失的手机」：大纲/角色/State ✅，ep1 ✅（QC pass, 0 issues, 23 evidence），ep2 ✅（QC pass, 0 issues, 28 evidence, 4 resolutions），ep3 ✅（返修 2 轮后 pass, 0 issues, 41 evidence, 6 resolutions），ep4 ✅（首次 502 后重试成功, pass）
+- **ep5 blocked**：3 次尝试全部失败（1 次完整重试 + 1 次固定 brief 重试 + 1 次 script-only 重试）
+
+### 根因分析
+
+- 义务无限累积：ep1 的 3 条义务（e1_find_phone/e1_blood_source/e1_abnormal_login）因剧情持续 carried_forward，ep5 的 continuity_contract 累积到 **9 条 must_continue**（ending_state + 8 条历史义务）。
+- QC 报告需同时满足：9 条 resolution + 每条证据逐字存在 + approved_memory 内部自洽（carried 写回/resolved 移除）→ 模型在高压下输出不一致。
+- 三次失败错误收敛轨迹：`missing_continuity_resolution+missing_memory_evidence` → `missing_memory_evidence+resolved_obligation_still_active` → `carried_forward_obligation_not_saved`（每次重答修掉一类，但 2 次尝试上限不够）。
+- 失败原子性通过：ep5 无 Script/Memory 落盘，ep1-4 完整无损（已验证）。
+
+### Request evidence
+
+- ep5 三次失败 Request：13:49（首次）、13:55（重试）、13:58（script-only 重试），均为 502 LLM 返回结构无效
+- 日志链：Writer draft 成功 → QC 评估 warning → grounding 失败 → context_retrying（带修正指令）→ 重答仍失败 → validation_failed
+
+### Next
+
+- 最小修复：`app/agents/qc.py` grounding 重试上限 2 → 3 次（有收敛证据支撑）；不改 validator、不改校验标准。
+- 修复后单次针对性复测 ep5；若仍失败，记录并暂停，交用户决策（义务累积设计问题需 Codex/用户评估）。
+
+## 2026-08-02 14:05 — execution — S3-7B-项目2 ep5 修复后复测（QC 重试 3 次）
+
+- Executor: DeepSeek
+- Result: still blocked
+
+### 修复
+
+- `app/agents/qc.py`: grounding 重试上限 2 → 3 次（`range(1,3)` → `range(1,4)`），前 2 次失败都带修正指令重试。有收敛证据支撑（三次失败错误数递减：2-3 个 → 1 个）。
+- 测试：定向 37 passed，全量 193 passed，无回归。
+
+### 复测结果
+
+- 第 5 集仍 502，但**失败模式转移**：QC grounding 通过（`workflow.showrunner_qc.saved` 直接落盘），转为 Writer 返修轮（attempt 2）的 EpisodeScript 连续 3 次 schema_validation 失败（`scenes.2.dialogues.0.character`、`scenes.3.characters.2` 角色 ID 错误）+ QC 首次 warning `future_boundary_risk`。
+- 4 次尝试全失败：首次 502（QC grounding）→ 重试 502（QC grounding）→ 固定 brief 502（QC grounding）→ 修复后 502（Writer schema）。
+
+### 根因（更新）
+
+- 第 5 集 continuity_contract 累积 9 条义务（ep1 3 条 + ep2 2 条 + ep3 2 条 + ep4 1 条 + ending_state），对 deepseek-v4-flash 输出质量压力过大：
+  - QC 输出内部不自洽（resolved/carried 与 approved_memory 冲突、证据缺失）
+  - Writer 在义务高压下输出角色 ID 错误
+- **架构级发现**：义务从 ep1 起全部 carried_forward 无限累积，无"到期解决"机制；第 5 集即触发模型能力瓶颈。此为 S3-7B 完整 10 集验证的核心障碍。
+
+### 决定
+
+- 停止对 ep5 的无界试错（已 4 次尝试 + 1 次代码修复）。
+- 保留证据交用户决策：a) 换更强模型（deepseek-chat/reasoner）重测；b) 先解决义务累积架构问题；c) 接受当前质量继续后续集（风险：义务更多）。ep1-4 完整无损。
+
+## 2026-08-02 14:20 — design — S3-7B 义务到期机制（用户批准的治本方案）
+
+### 问题
+
+- carried_forward 义务每集被"重开账"：source_episode_number 被模型写成当前集、due=当前集+1，来源链丢失。
+- 合同（build_continuity_contract 按 due==本集过滤）因此恒等于"上一集全部义务"，ep5 累积 9 条 → QC/Writer 单次输出自洽失败。
+
+### 设计（三处改动）
+
+1. 后端写回时保留义务来源链：script_service 在 upsert 前归一化 obligations——carried 义务保留原始 source_episode_number，due=当前集+1。
+2. 强制到期（qc_grounding 新规则）：合同义务若 `当前集 - source > 2` → 必须 resolved，再 carried 报 `overdue_obligation_must_resolve`。义务最多活 2 集。
+3. 放宽 `_validate_new_obligations`：写回义务 source 允许 <= 当前集（不再强制 == 当前集）；新建义务仍强制 due=当前集+1。prompt + correction 指令同步。
+
+### 效果
+
+单集合同义务数 ≤ ~4 条；QC 单次输出压力可控；连续性由"到期必须解决"保证，未到期旧坑由 Showrunner State 大纲兜底。
+
+## 2026-08-02 14:50 — execution — S3-7B-项目4（午夜丢失的手机-v2）完整 10 集生成
+
+- Executor: DeepSeek（用户授权连续生成 10 集）
+- Result: completed（10/10 集 QC pass）
+
+### 过程
+
+- 项目 id=4「午夜丢失的手机-v2」，创意："一个男人午夜醒来发现手机丢失，手机里的秘密关系到他被诬陷的罪名，他必须在天亮前找回手机并洗清嫌疑"
+- 前置：大纲/角色/State 一次通过
+- 逐集：ep1-2 ✅ 一次通过；ep3 两次 502 后补跑成功；ep4 ✅；ep5 首次 409 重试成功；ep6 ✅；ep7 409 后重试成功；ep8 409 后重试成功；ep9 ✅；ep10 一次通过
+- 每集均 QC pass、0 issues、16-41 条 memory evidence
+
+### 修复（义务到期机制，用户批准治本方案）
+
+- 根因：carried_forward 义务每集被"重开账"（source 改成当前集、due=下集），合同过滤失效，ep5 累积 9 条义务压垮 QC 输出
+- 改动：
+  1. `qc_grounding.py` 新增 `normalize_carried_obligation_sources`：用合同原始 source 恢复写回义务来源链；新增 `overdue_obligation_must_resolve`（欠账>2 集必须 resolve）
+  2. `qc_grounding.py` 放宽 `_validate_new_obligations`：source <= 当前集
+  3. `qc.py`：`generate_report` 返回前应用 normalize（写回也带修正）；QC grounding 重试上限 2→3 次；correction 指令新增 overdue 类型
+  4. `qc_v1.md` prompt 契约同步
+- 测试：+2（来源链恢复、overdue 强制 resolve）；全量 195 passed
+
+### 验证结果
+
+- 义务来源链保持：e1_* 义务从 ep1 到 ep3 均 source=1（修复前会被重写成当前集）
+- ep4 到期义务被正确 resolve（ep4 resolutions 不再 carried e1 义务）
+- 每集义务数稳定在 3-8 条，不再无限膨胀
+- 10 集全部 QC pass，ep10 义务数 0（结局不欠账）
+
+### 审计发现（非阻塞）
+
+- 重写早期集会丢弃其后记忆（`upsert_episode_memory` 保留 `< 当前集`）——这是**设计行为**（防止旧记忆污染新剧情链），已确认非 bug
+- ep7 常见 409 原因：warning 级 issue（场景超限、future_reveal）也被判不通过，属质量门禁严格，重试即可
+- 真实 LLM 偶发 502（schema 校验失败）为模型随机性，针对性重试可恢复
+
+### Next
+
+- S3-7B 逐集生成验证完成；下一步可做内容质量评分或继续 S3-7C 三个题材复验（待用户决策）

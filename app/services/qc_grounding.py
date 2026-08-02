@@ -176,6 +176,40 @@ def normalize_surplus_memory_evidence(report: QCReport) -> QCReport:
     return normalized
 
 
+def normalize_carried_obligation_sources(
+    report: QCReport,
+    writer_brief: WriterBrief | None,
+) -> QCReport:
+    """写回义务时保留来源链：用合同义务的原始 source_episode_number 覆盖
+    approved_memory 中同 ID 义务的值。
+
+    模型每集把 carried_forward 义务的 source_episode_number 重写为当前集，
+    导致义务来源链丢失、到期机制失效。此函数在 grounding 校验前恢复
+    carried 义务的原始来源，使「当前集 - source > 2 必须 resolve」的到期
+    规则基于真实欠账代数生效。
+    """
+    if report.status != "pass" or report.approved_memory is None:
+        return report
+    contract = (
+        writer_brief.continuity_contract
+        if writer_brief is not None
+        else None
+    )
+    if contract is None:
+        return report
+
+    normalized = report.model_copy(deep=True)
+    contract_by_id = {
+        item.obligation_id: item for item in contract.must_continue
+    }
+    for obligation in normalized.approved_memory.continuity_obligations:
+        contract_item = contract_by_id.get(obligation.obligation_id)
+        if contract_item is None:
+            continue
+        obligation.source_episode_number = contract_item.source_episode_number
+    return normalized
+
+
 def _validate_memory_evidence(
     report: QCReport,
     script: EpisodeScript,
@@ -300,7 +334,7 @@ def _validate_new_obligations(report: QCReport, script: EpisodeScript) -> list[d
             )
     for obligation in memory.continuity_obligations:
         if (
-            obligation.source_episode_number != script.episode_number
+            obligation.source_episode_number > script.episode_number
             or obligation.due_episode_number != script.episode_number + 1
         ):
             issues.append(
@@ -411,6 +445,17 @@ def _validate_continuity_resolutions(
                         "obligation_id": obligation_id,
                     }
                 )
+            if (
+                obligation.source_episode_number is not None
+                and script.episode_number - obligation.source_episode_number > 2
+            ):
+                issues.append(
+                    {
+                        "type": "overdue_obligation_must_resolve",
+                        "obligation_id": obligation_id,
+                        "source_episode_number": obligation.source_episode_number,
+                    }
+                )
         elif obligation_id in carried_ids:
             issues.append(
                 {
@@ -429,11 +474,19 @@ def validate_qc_report_grounding(
     if report.status != "pass":
         return
 
+    normalized_report = normalize_carried_obligation_sources(
+        report,
+        writer_brief,
+    )
     issues = [
-        *_validate_memory_evidence(report, script),
-        *_validate_ending_state(report, script),
-        *_validate_new_obligations(report, script),
-        *_validate_continuity_resolutions(report, script, writer_brief),
+        *_validate_memory_evidence(normalized_report, script),
+        *_validate_ending_state(normalized_report, script),
+        *_validate_new_obligations(normalized_report, script),
+        *_validate_continuity_resolutions(
+            normalized_report,
+            script,
+            writer_brief,
+        ),
     ]
     if issues:
         raise QCReportGroundingError(issues)

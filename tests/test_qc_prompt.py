@@ -40,8 +40,9 @@ def test_qc_prompt_defines_carried_forward_writeback_contract() -> None:
     assert "status=carried_forward" in prompt
     assert "第 10 集不得使用 `carried_forward`" in prompt
     assert "必须出现在本集 `approved_memory.continuity_obligations` 中" in prompt
-    assert "`source_episode_number` 必须为当前集号" in prompt
-    assert "`due_episode_number` 必须为下一集号" in prompt
+    assert "`source_episode_number` 为当前集号" in prompt
+    assert "`due_episode_number` 为下一集号即可" in prompt
+    assert "后端会按上一集合同把 `source_episode_number` 恢复为义务的原始来源集" in prompt
     assert "不得沿用上一集记忆的路径" in prompt
     assert "resolved` 的事项不得再次写入本集" in prompt
 

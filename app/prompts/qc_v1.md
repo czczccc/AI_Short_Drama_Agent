@@ -91,7 +91,7 @@
 - `continuity_resolutions` 的每项必须且只能包含 `obligation_id`、`status`、`scene_number` 和 `evidence_text`；`status` 只能是 `resolved` 或 `carried_forward`，不得改用布尔字段或自定义字段。
 - `continuity_resolutions.N.status=carried_forward` 时（仅限第 1–9 集，第 10 集不得使用 `carried_forward`），必须同时满足：
   - 同一 `obligation_id` 必须出现在本集 `approved_memory.continuity_obligations` 中，不得只标记延续却不写回义务。
-  - 该义务的 `source_episode_number` 必须为当前集号，`due_episode_number` 必须为下一集号。
+  - 该义务的 `source_episode_number` 为当前集号、`due_episode_number` 为下一集号即可；后端会按上一集合同把 `source_episode_number` 恢复为义务的原始来源集，因此同一义务在后续集数的到期判定基于真实欠账代数。
   - `source_memory_path` 必须指向本集 `approved_memory` 中真实存在且由场景支持的路径（例如 `unresolved_questions.N`、`props_and_evidence.N`、`ending_state`），不得沿用上一集记忆的路径。
   - 对应的 `continuity_obligations.N` 必须在本集 `memory_evidence` 中有一条证据，且必须完整复制同一条 `evidence_catalog` 记录中的 `scene_number` 和 `evidence_text`，不得概括或改写。
 - `continuity_resolutions.N.status=resolved` 的事项不得再次写入本集 `approved_memory.continuity_obligations`。
@@ -213,7 +213,7 @@
 ]
 ```
 
-`carried_forward` 的最小完整示例（第 1–9 集）：决议标记延续时，同一 `obligation_id` 必须同时写回本集 `approved_memory.continuity_obligations`，义务的 `source_episode_number` 为当前集、`due_episode_number` 为下一集，`source_memory_path` 指向本集正式记忆中的真实路径，并为本集义务提供逐字复制的 `memory_evidence`：
+`carried_forward` 的最小完整示例（第 1–9 集）：决议标记延续时，同一 `obligation_id` 必须同时写回本集 `approved_memory.continuity_obligations`，义务的 `source_episode_number` 为当前集、`due_episode_number` 为下一集（后端会按合同恢复原始来源集），`source_memory_path` 指向本集正式记忆中的真实路径，并为本集义务提供逐字复制的 `memory_evidence`：
 
 ```json
 "approved_memory": {

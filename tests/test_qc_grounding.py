@@ -283,3 +283,85 @@ def test_grounded_qc_pass_requires_resolution_for_every_contract_item() -> None:
         validate_qc_report_grounding(report, script, brief)
 
     assert "missing_continuity_resolution" in exc_info.value.reason_codes
+
+
+def test_normalize_carried_obligation_sources_restores_contract_origin() -> None:
+    """写回义务的 source_episode_number 应从合同恢复原始来源集，而非模型填的当前集。"""
+    from app.services.qc_grounding import normalize_carried_obligation_sources
+
+    report = _grounded_pass_report(episode_number=5)
+    report.approved_memory.continuity_obligations[0].source_episode_number = 5
+    report.approved_memory.continuity_obligations[0].obligation_id = "e1_find_phone"
+
+    brief_data = valid_writer_brief_data(episode_number=5)
+    brief_data["continuity_contract"] = {
+        "previous_episode_number": 4,
+        "previous_ending_state": {
+            "location": "废弃仓库",
+            "time_of_day": "凌晨",
+            "situation": "两人发现加密信息。",
+        },
+        "must_continue": [
+            {
+                "obligation_id": "e1_find_phone",
+                "kind": "active_crisis",
+                "description": "找回丢失的手机。",
+                "source_episode_number": 1,
+                "due_episode_number": 5,
+                "source_memory_path": "unresolved_questions.0",
+            }
+        ],
+    }
+    brief = WriterBrief.model_validate(brief_data)
+
+    normalized = normalize_carried_obligation_sources(report, brief)
+
+    obligation = normalized.approved_memory.continuity_obligations[0]
+    assert obligation.source_episode_number == 1
+    assert obligation.obligation_id == "e1_find_phone"
+
+
+def test_grounded_qc_pass_rejects_overdue_carried_forward() -> None:
+    """来源超过 2 集的义务若仍标 carried_forward 必须报 overdue_obligation_must_resolve。"""
+    report = _grounded_pass_report(episode_number=5)
+    report.approved_memory.continuity_obligations[0].source_episode_number = 1
+    report.approved_memory.continuity_obligations[0].obligation_id = "e1_find_phone"
+    from app.schemas.qc import ContinuityResolution
+
+    report.continuity_resolutions = [
+        ContinuityResolution.model_validate(
+            {
+                "obligation_id": "e1_find_phone",
+                "status": "carried_forward",
+                "scene_number": 3,
+                "evidence_text": "屏幕上出现苏妍父亲的名字",
+            }
+        )
+    ]
+
+    script = EpisodeScript.model_validate(valid_script_data(episode_number=5))
+    brief_data = valid_writer_brief_data(episode_number=5)
+    brief_data["continuity_contract"] = {
+        "previous_episode_number": 4,
+        "previous_ending_state": {
+            "location": "废弃仓库",
+            "time_of_day": "凌晨",
+            "situation": "两人发现加密信息。",
+        },
+        "must_continue": [
+            {
+                "obligation_id": "e1_find_phone",
+                "kind": "active_crisis",
+                "description": "找回丢失的手机。",
+                "source_episode_number": 1,
+                "due_episode_number": 5,
+                "source_memory_path": "unresolved_questions.0",
+            }
+        ],
+    }
+    brief = WriterBrief.model_validate(brief_data)
+
+    with pytest.raises(QCReportGroundingError) as exc_info:
+        validate_qc_report_grounding(report, script, brief)
+
+    assert "overdue_obligation_must_resolve" in exc_info.value.reason_codes

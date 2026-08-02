@@ -459,7 +459,7 @@ def test_qc_agent_retry_prompt_contains_targeted_correction_instructions() -> No
             "obligation_id": "e3_fang_lin_motive",
             "kind": "active_crisis",
             "description": "继续追查方琳的真实动机。",
-            "source_episode_number": 4,
+            "source_episode_number": 3,
             "due_episode_number": 5,
             "source_memory_path": "unresolved_questions.0",
         }

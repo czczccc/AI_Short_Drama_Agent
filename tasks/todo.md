@@ -2,11 +2,11 @@
 
 ## Task ID
 
-`S3-6.3-C`
+`S3-6.3-D`
 
 ## Title
 
-锁定后端补全义务时的场景证据复用
+保留已有合法义务并避免同来源重复
 
 ## Owner
 
@@ -15,9 +15,9 @@
 
 ## Goal
 
-增加一个聚焦单元测试，证明 `complete_missing_continuity_obligations()` 为缺失义务补全 `memory_evidence` 时，会逐字复用对应 `unresolved_questions.N` 的场号和场景原文。
+增加聚焦单元测试，证明 `complete_missing_continuity_obligations()` 会保留模型已经生成的合法义务，不会为同一个 `source_memory_path` 再创建后端义务，并且重复调用保持幂等。
 
-当前生产逻辑已经存在；本任务首先补足契约测试。如果新增测试直接通过，不要为了产生代码 diff 而修改生产实现。
+当前生产逻辑已经存在；优先补足契约测试。若测试直接通过，不要为了制造代码改动而修改生产实现。
 
 ## Required Context
 
@@ -25,10 +25,10 @@
 
 1. `AGENTS.md`
 2. 本文件
-3. `app/services/qc_grounding.py` 中 `complete_missing_continuity_obligations()` 及相邻证据校验函数
+3. `app/services/qc_grounding.py` 中 `complete_missing_continuity_obligations()`
 4. `tests/test_qc_grounding.py`
-5. 如需复用 fixture，再读取 `tests/fakes.py` 中 `valid_qc_pass_report_data()`
-6. 完成或阻塞后读取 `tasks/execution_log.md` 的记录规则并追加本次记录
+5. 如需 fixture，只读取 `tests/fakes.py` 中 `valid_qc_pass_report_data()`
+6. 完成或阻塞后读取 `tasks/execution_log.md` 并追加本次记录
 
 不要一次读取全部 `docs`。
 
@@ -52,21 +52,20 @@
 
 新增一个命名清楚的测试，至少覆盖：
 
-1. 构造 `status=pass` 且包含 `unresolved_questions.0` 的 QC Report。
-2. 删除模型返回的 `continuity_obligations` 及其义务证据，但保留 `unresolved_questions.0` 的合法场景证据。
-3. 调用 `complete_missing_continuity_obligations()`。
-4. 断言新增义务对应的 `memory_evidence` 路径为 `continuity_obligations.0`。
-5. 断言该证据的 `scene_number` 和 `evidence_text` 与 `unresolved_questions.0` 的证据完全相同。
+1. 构造第1集 `status=pass` 的 QC Report，其中 `unresolved_questions.0` 已经有一条字段合法的模型义务和对应 `continuity_obligations.0` 证据。
+2. 记录调用前义务和证据的完整 `model_dump(mode="json")` 数据。
+3. 调用 `complete_missing_continuity_obligations()`，断言义务数量仍为1、原义务内容不变、没有同来源路径重复项、义务证据没有重复。
+4. 对第一次结果再次调用该函数，断言第二次结果与第一次结果的完整 JSON 数据相同，证明幂等。
 
-禁止使用模糊匹配、生成新证据文字或调用 LLM。缺少未解决问题证据时不得伪造证据；该边界不属于本任务的新功能，不要顺手扩写。
+判断“同一义务”只使用精确的 `source_memory_path`，不得增加模糊文本匹配。
 
 ## Non-Goals
 
-- 不测试或修改“保留已有合法义务并去重”；它属于 `S3-6.3-D`。
 - 不测试第10集；它属于 `S3-6.3-E`。
 - 不修改 Prompt、Schema、API、数据库、Provider 或 Story Memory 保存流程。
-- 不运行真实 DeepSeek 调用。
-- 不更新 `TASKS.md`、`tasks/plan.md` 或本文件的完成状态；只向 `tasks/execution_log.md` 末尾追加本次执行记录。
+- 不引入义务合并、描述改写或模糊去重规则。
+- 不运行真实 LLM。
+- 不更新 `TASKS.md`、`tasks/plan.md` 或本文件状态；只追加执行日志。
 - 不 commit、不 push、不修改 `.env`。
 
 ## Verification Commands
@@ -79,29 +78,29 @@
 git diff --check
 ```
 
-本任务不运行全部 pytest；全量测试统一在 `S3-6.3-G` 执行。
+全量 pytest 留到 `S3-6.3-G`。
 
 ## Acceptance Criteria
 
-- 新测试明确验证义务证据路径、场号和原文逐字复用。
-- 两条 pytest 命令均通过，`git diff --check` 无错误。
-- 生产代码只有在测试揭示真实缺口时才发生最小修改。
-- 没有任何白名单外修改。
-- `tasks/execution_log.md` 已按模板追加 `S3-6.3-C/attempt-N`，准确记录修改、方法和测试结果。
+- 新测试证明已有合法义务及其证据保持不变。
+- 同一 `source_memory_path` 不产生第二条义务，重复调用结果幂等。
+- 两条 pytest 命令通过，`git diff --check` 无错误。
+- 没有白名单外修改；生产代码只在测试揭示真实缺口时最小修改。
+- `tasks/execution_log.md` 已追加 `S3-6.3-D/attempt-N`。
 
 ## Stop Conditions
 
 出现以下情况立即停止并返回 `blocked`：
 
-- 必须修改白名单外文件才能完成。
-- 现有工作区改动与目标代码冲突。
-- 测试暴露的是 Schema/API/Prompt 问题，而不是证据复用问题。
-- 需要猜测新的业务规则。
+- 需要修改白名单外文件。
+- 需要引入模糊匹配、Schema/API/Prompt 变化或新业务规则。
+- 当前工作区改动与目标文件冲突。
+- 指定测试外出现不属于本任务的失败。
 
 ## Required Report
 
 ```text
-TASK_ID: S3-6.3-C
+TASK_ID: S3-6.3-D
 RESULT: completed | blocked
 FILES_CHANGED:
 - path: purpose
@@ -116,4 +115,4 @@ RISKS_OR_BLOCKERS:
 - none, or exact blocker
 ```
 
-把以上报告追加到 `tasks/execution_log.md` 后，再在对话中返回同一内容的简要版本。日志中不得写入 API Key、`.env` 内容、完整 Prompt 或完整模型输出。
+把以上报告追加到 `tasks/execution_log.md` 后，再在对话中返回摘要。禁止记录 API Key、`.env` 内容、完整 Prompt 或完整模型输出。

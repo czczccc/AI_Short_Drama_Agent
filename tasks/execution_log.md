@@ -130,3 +130,35 @@
 ### Risks or blockers
 
 - none
+
+## 2026-08-02 13:51 — review — S3-6.3-C/review-1
+
+- Reviewer: Codex
+- Reviews: S3-6.3-C/attempt-1
+- Decision: accepted
+
+### Diff review
+
+- DeepSeek 只新增了 `tests/test_qc_grounding.py` 的聚焦测试和 import，并按协议追加 execution 记录；没有修改生产代码或白名单外业务文件。
+- 测试准确构造“保留未解决问题证据、删除模型义务及义务证据”的输入，并验证补全后的 `continuity_obligations.0` 场号和原文与 `unresolved_questions.0` 完全相同。
+
+### Independent verification
+
+- `.\.venv\Scripts\python.exe -m pytest -q tests/test_qc_grounding.py`
+  - Result: passed
+  - Evidence: 8 passed，1 个既有 Starlette/httpx 弃用警告
+- `.\.venv\Scripts\python.exe -m pytest -q tests/test_scripts.py::test_showrunner_qc_completes_missing_unresolved_question_obligation`
+  - Result: passed
+  - Evidence: 1 passed，1 个既有 Starlette/httpx 弃用警告
+- `git diff --check`
+  - Result: passed
+  - Evidence: 无空白错误
+
+### Decision reason
+
+- S3-6.3-C 的证据路径、场号和原文逐字复用均已有直接回归测试；范围、测试和日志要求全部满足。
+
+### Task state action
+
+- `S3-6.3-C` 标记完成。
+- 下一任务：`S3-6.3-D`，验证保留已有合法义务并避免同来源重复。

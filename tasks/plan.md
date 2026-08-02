@@ -70,8 +70,8 @@ S3-6.3 后端补全义务
 |---|---|---|---|---|
 | S3-6.3-A | 复现并补全第1–9集缺失义务 | grounding、API 回归测试 | RED→GREEN API 测试 | 已验收 |
 | S3-6.3-B | 锁定稳定 ID、来源与到期字段 | 现有 API 回归测试 | 精确字段断言 | 已验收 |
-| S3-6.3-C | 锁定义务证据复用 | `tests/test_qc_grounding.py`；必要时 grounding | 单元测试证明逐字复用场号和原文 | 当前 |
-| S3-6.3-D | 保留合法义务并避免同来源重复 | grounding 单元测试；必要时 grounding | 已有义务原样保留，重复执行幂等 | 排队 |
+| S3-6.3-C | 锁定义务证据复用 | `tests/test_qc_grounding.py`；必要时 grounding | 单元测试证明逐字复用场号和原文 | 已验收 |
+| S3-6.3-D | 保留合法义务并避免同来源重复 | grounding 单元测试；必要时 grounding | 已有义务原样保留，重复执行幂等 | 当前 |
 | S3-6.3-E | 锁定第10集边界 | grounding 单元测试 | 第10集报告不新增义务或义务证据 | 排队 |
 | S3-6.3-F | 范围与回归门禁 | QC/脚本定向测试 | 无新 LLM、无模糊匹配、API Schema 不变 | 排队 |
 | S3-6.3-G | Phase 验收与文档 | 测试和相关文档 | 全部 pytest；API/WORKFLOW/DATA_MODEL 同步 | 排队 |

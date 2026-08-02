@@ -1,50 +1,174 @@
-# Implementation Plan: Phase 2C Character Agent
+# Execution Plan: Interview Text MVP
 
-## Overview
+## 1. 目标与控制模型
 
-将 `StoryOutline.characters` 深化为项目级角色圣经，保存到 `Project.characters_json`，提供生成、查询和整体替换 API，并让 Writer 在角色圣经存在时优先使用，不存在时保持兼容。
+当前目标是把现有文字生产链封板为可面试演示的后端 MVP，而不是继续增加 Agent 或提前进入视频。
 
-## Architecture Decisions
+- `docs/03_development/TASKS.md`：路线、状态和验收标准的唯一事实来源。
+- `tasks/plan.md`：总体负责人使用的依赖图、协作协议和阶段 Runbook。
+- `tasks/todo.md`：唯一可交给代码执行者的当前原子任务包；任何时刻只能有一个任务 ID。
+- `tasks/execution_log.md`：DeepSeek 执行记录和 Codex 复核记录的追加式证据日志，不控制任务状态。
 
-- 一次 LLM 调用生成当前项目全部角色，保证人物关系一致并控制费用。
-- 使用 `characters_json` 保存以 `character_id` 为键的对象，不创建 Character 表。
-- Character Bible 经过结构校验和大纲上下文二次校验后才能保存。
-- PUT 采用整体替换；用户输入无效返回 `422`，模型输出无效返回 `502`。
-- 为已有 SQLite 项目库增加最小列升级逻辑，不引入迁移框架。
+角色分工：
 
-## Task List
+- **Codex / 总体负责人**：选定下一原子任务、定义允许范围、复核 diff 和测试证据、更新任务状态、决定是否提交或解锁下一任务。
+- **DeepSeek / 代码执行者**：严格执行当前任务包，提交代码与测试结果报告；不修改路线、不勾选验收、不自行进入下一任务。
+- **用户 / 决策者**：批准路线或验收标准变化，并在需要时把当前任务包交给 DeepSeek。
 
-### Foundation
+## 2. 不可违反的执行协议
 
-- [x] 定义 Character Bible Schema 与跨角色校验
-- [x] 给 Project 增加 `characters_json` 并兼容升级已有 SQLite
+1. 一次只执行 `tasks/todo.md` 中一个原子任务，不接受“顺便修复”。
+2. 开始前读取 `AGENTS.md` 以及任务包列出的最小上下文，不一次加载全部文档。
+3. 优先补测试或增强断言；测试已经覆盖且通过时，不为了制造改动而重写生产代码。
+4. 只能修改任务包的文件白名单；需要越界时停止并报告，不自行扩大范围。
+5. 不得重置、覆盖或删除当前工作区已有改动；不得修改 `.env`、调用真实模型、commit 或 push，除非任务包明确授权。
+6. 执行者完成或阻塞后，必须在 `tasks/execution_log.md` 末尾追加一条记录；不得修改历史记录，也不得修改 `TASKS.md`、`plan.md` 或 `todo.md` 的完成状态。
+7. 执行日志不得包含 API Key、`.env` 内容、完整 Prompt、完整模型输出或无关的大段测试日志。
+8. Codex 必须独立查看 diff 并重跑必要测试，再向执行日志追加复核记录；未复核的执行结果不得解锁下一任务。
 
-### Character Workflow
+## 3. Definition of Ready
 
-- [x] 实现 Character Agent 和 `character_v1.md`
-- [x] 实现生成、查询、整体替换 Service/API
-- [x] 使用 FakeLLMProvider 覆盖成功与失败路径
+原子任务只有同时满足以下条件才能交给 DeepSeek：
 
-### Writer Integration
+- 有唯一任务 ID、单一目标和明确非目标。
+- 依赖任务已经由 Codex 验收。
+- 默认修改不超过 1–2 个文件；超过 5 个文件必须重新拆分。
+- 指定了允许读取/修改的文件、测试命令和可观察验收结果。
+- 写明停止条件和需要回报的证据。
 
-- [x] 有角色圣经时 Writer 优先使用
-- [x] 无角色圣经时继续使用大纲角色概念
+## 4. Definition of Done
 
-### Completion
+任务只有同时满足以下条件才能由 Codex 标记完成：
 
-- [x] 更新 API、数据模型、Prompt、工作流、任务和测试文档
-- [x] 全量测试通过且正式数据库不被 pytest 污染
-- [x] 有有效 Key 时仅真实生成一次角色圣经
+- diff 只包含授权范围内的必要修改。
+- 验收标准均由测试或只读证据证明，不以“代码看起来正确”代替。
+- 指定测试通过，没有跳过或删除既有测试。
+- 没有新增 LLM 调用、依赖、API、数据库字段或兼容分支，除非任务明确要求。
+- DeepSeek 已追加执行记录，包含修改文件、实施方法、测试命令、结果和剩余风险。
+- Codex 已完成独立复核并追加验收记录。
 
-## Risks and Mitigations
+Phase 完成还必须运行全部 pytest，并同步该 Phase 实际影响的 API/工作流/模型文档。原子任务完成不等于 Phase 完成。
 
-| Risk | Impact | Mitigation |
-|---|---|---|
-| 模型新增、遗漏或篡改角色 | 高 | 使用大纲上下文做 ID 集合及姓名/年龄/定位二次校验 |
-| 非法或自引用关系 | 高 | Collection `model_validator` 统一校验 |
-| 旧 SQLite 缺少新列 | 高 | 启动时只对 SQLite 执行幂等列检查与添加 |
-| Writer 集成破坏旧项目 | 高 | `characters_json` 缺失时保留现有角色概念输入 |
+## 5. 固定依赖图
 
-## Open Questions
+```text
+S3-6.3 后端补全义务
+  → S3-7A 项目16第2集真实阻塞回归
+  → S3-7B 项目16第3–10集连续验证
+  → S3-7C 三题材最新流程整季复验
+  → S3-7D 固定评分表封板
+  → S3-8 一句话生成正式第一集
+  → S3-9 面试交付与瘦身封板
+  → Phase 3-2 Storyboard
+```
 
-- 无阻塞问题；字段类型按确认后的实现假设落地。
+任何后续 Phase 都不得提前实现。真实测试发现的新问题只有阻塞当前验收时才能形成当前 Phase 的修复任务，否则记录后冻结。
+
+## 6. 当前 Phase Runbook：S3-6.3
+
+| ID | 原子任务 | 默认文件范围 | 验收方式 | 状态 |
+|---|---|---|---|---|
+| S3-6.3-A | 复现并补全第1–9集缺失义务 | grounding、API 回归测试 | RED→GREEN API 测试 | 已验收 |
+| S3-6.3-B | 锁定稳定 ID、来源与到期字段 | 现有 API 回归测试 | 精确字段断言 | 已验收 |
+| S3-6.3-C | 锁定义务证据复用 | `tests/test_qc_grounding.py`；必要时 grounding | 单元测试证明逐字复用场号和原文 | 当前 |
+| S3-6.3-D | 保留合法义务并避免同来源重复 | grounding 单元测试；必要时 grounding | 已有义务原样保留，重复执行幂等 | 排队 |
+| S3-6.3-E | 锁定第10集边界 | grounding 单元测试 | 第10集报告不新增义务或义务证据 | 排队 |
+| S3-6.3-F | 范围与回归门禁 | QC/脚本定向测试 | 无新 LLM、无模糊匹配、API Schema 不变 | 排队 |
+| S3-6.3-G | Phase 验收与文档 | 测试和相关文档 | 全部 pytest；API/WORKFLOW/DATA_MODEL 同步 | 排队 |
+
+S3-6.3-G 通过前不得开始真实模型回归。
+
+## 7. 后续 Phase Runbook
+
+### S3-7A：项目16第2集
+
+1. `S3-7A-A`：只读核对项目、模型配置、已有 Memory/Brief 和数据库基线。
+2. `S3-7A-B`：执行一次真实生成；允许费用和数据库写入，不进行连续 Prompt 试错。
+3. `S3-7A-C`：按 Request ID 核对日志、耗时、状态码和数据库原子性，形成验收记录。
+
+解锁条件：机械义务映射不再导致 502；成功与拒绝都符合保存原则。
+
+### S3-7B：项目16完整季
+
+1. `S3-7B-A`：第3–5集连续生成和第一次检查点。
+2. `S3-7B-B`：第6–8集连续生成和第二次检查点。
+3. `S3-7B-C`：第9–10集、结局回收和终集边界。
+4. `S3-7B-D`：导出剧本、Memory、QC 和日志索引。
+
+每个检查点都先验收再继续；禁止跳集或手工补写正式 Memory。
+
+### S3-7C / S3-7D：三题材质量门禁
+
+1. 三个题材分别执行，不合并为一个长时间不可审计任务。
+2. 每个项目必须保留大纲、角色、10集剧本、最终 Memory、QC 与日志。
+3. 完整产物生成后再评分；生成执行者不得一边生成一边改变评分标准。
+4. 未达标只针对明确评分项立修复任务，不新增 Agent 或产品能力。
+
+解锁条件：三项目平均分不低于80，任一项目不低于75，且无致命人物、事实或连续性错误。
+
+### S3-8：一句话生成第一集
+
+1. `S3-8-A`：接口契约、失败阶段和重试语义先行。
+2. `S3-8-B`：仅编排现有 Service，不复制 Agent 逻辑。
+3. `S3-8-C`：Fake Provider 全流程、API 和失败原子性测试。
+4. `S3-8-D`：一次真实模型演示、全部 pytest 和文档同步。
+
+任何原子任务超过5个文件时必须进一步拆分。
+
+### S3-9：面试交付
+
+按 CI、README/演示、产物样例、瘦身审查、fresh clone、安全与 Git 封板分别执行。瘦身只处理已经证明未使用的内容，不在封板阶段重写核心架构。
+
+## 8. 执行与复核日志
+
+DeepSeek 每次执行完成或阻塞后，把同一份结构化报告追加到 `tasks/execution_log.md`，并在对话中返回摘要。记录 ID 使用：
+
+```text
+<TASK_ID>/attempt-<N>
+```
+
+Codex 验收后另外追加 `<TASK_ID>/review-<N>`，不得回写或修改 DeepSeek 的原记录。执行日志记录事实证据，任务状态仍只由 `TASKS.md` 控制。
+
+## 9. DeepSeek 回报格式
+
+DeepSeek 每次必须按以下格式返回，缺一项视为未交付：
+
+```text
+TASK_ID:
+RESULT: completed | blocked
+FILES_CHANGED:
+- path: purpose
+TESTS_RUN:
+- exact command
+- exact result
+ACCEPTANCE_EVIDENCE:
+- criterion: evidence
+NOT_CHANGED:
+- out-of-scope areas preserved
+RISKS_OR_BLOCKERS:
+- none, or exact blocker
+```
+
+禁止只回复“已完成”“测试通过”或只贴代码片段。
+
+## 10. 停止条件
+
+执行者遇到以下任一情况必须停止并回报 Codex：
+
+- 需要修改任务包白名单之外的文件。
+- 需要新增 API、Schema、数据库字段、依赖或 LLM 调用。
+- 发现现有未提交改动与任务修改发生冲突。
+- 指定测试之外出现失败，且根因不属于当前验收标准。
+- 需求存在两种会产生不同业务行为的合理解释。
+
+## 11. 风险控制
+
+| 风险 | 控制方式 |
+|---|---|
+| 执行者顺手扩范围 | 单任务文件白名单 + 停止条件 |
+| 文档和实际状态不同步 | 只有 Codex 更新状态源 |
+| 执行过程无法追溯 | DeepSeek 和 Codex 分别追加执行/复核记录 |
+| 真实模型反复试错烧费 | 每个修复默认一次针对性真实复测 |
+| 长任务无法定位失败 | 单集、分段、分题材检查点 |
+| 当前脏工作区被覆盖 | 禁止 reset/checkout/批量覆盖，提交由 Codex统一安排 |
+| 面试封板时大重构 | S3-9 只做有证据的瘦身，不改核心行为 |

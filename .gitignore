@@ -28,6 +28,7 @@ logs/
 eval_outputs/
 
 .workbuddy/
+.reasonix/
 
 # Local database backups
 *.bak

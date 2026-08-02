@@ -8,7 +8,7 @@ from app.models.project import Project
 from app.providers.llm.base import LLMCallError
 from app.providers.llm.factory import get_configured_llm_provider
 from app.schemas.character import CharacterBibleCollection
-from app.schemas.memory import StoryMemory
+from app.schemas.memory import EpisodeMemory, StoryMemory
 from app.schemas.outline import StoryOutline
 from app.schemas.showrunner import ShowrunnerState
 from app.services.showrunner_service import stable_json_sha256
@@ -17,6 +17,7 @@ from tests.fakes import (
     FailingLLMProvider,
     valid_character_bibles_data,
     valid_outline_data,
+    valid_qc_pass_report_data,
     valid_showrunner_state_data,
 )
 from tests.test_characters import create_outline_ready_project, generate_characters
@@ -236,6 +237,39 @@ def test_generate_writer_brief_validates_persists_and_preserves_other_briefs(
         assert set(showrunner["writer_briefs"]) == {"1", "2"}
         assert showrunner["writer_briefs"]["1"] == first_brief
         assert showrunner["writer_briefs"]["2"] == second_brief
+
+
+def test_generate_writer_brief_injects_previous_episode_continuity_contract(
+    client: TestClient,
+    test_session_local,
+) -> None:
+    project_id = create_outline_ready_project(client)
+    assert generate_characters(client, project_id).status_code == 200
+    assert generate_showrunner(client, project_id).status_code == 200
+    previous = EpisodeMemory.model_validate(
+        valid_qc_pass_report_data(episode_number=1)["approved_memory"]
+    )
+    with test_session_local() as db:
+        project = db.get(Project, project_id)
+        project.memory_json = StoryMemory(
+            episodes={"1": previous}
+        ).model_dump_json()
+        db.commit()
+
+    response = generate_writer_brief(client, project_id, episode_number=2)
+
+    assert response.status_code == 200
+    contract = response.json()["brief"]["continuity_contract"]
+    assert contract["previous_episode_number"] == 1
+    assert contract["previous_ending_state"] == {
+        "location": "人工智能公司机房",
+        "time_of_day": "深夜",
+        "situation": "林峰看到文件中出现苏妍父亲的名字。",
+    }
+    assert [item["obligation_id"] for item in contract["must_continue"]] == [
+        "episode_1_ending_state",
+        "e1_trace_the_name",
+    ]
 
 
 def test_get_saved_writer_brief(client: TestClient) -> None:

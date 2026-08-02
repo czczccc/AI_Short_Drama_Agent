@@ -28,6 +28,7 @@ SYSTEM_PROMPT = """你是中文竖屏短剧项目的 Showrunner Agent，正在�
 - knows 和 must_not_know 只写有依据的信息；无论有 0、1 或多个条目都必须输出 JSON 数组，确实没有时输出 []，不得输出 null 或单个字符串，也不得为了填字段编造事实。
 - 当前集没有专属 character arc beat 时，根据角色起止状态、此前最近转折和当前集 Episode Plan 推导；下一次未来转折只能作为边界，不能写成已经发生。
 - continuity_context 只能引用 Story Memory 中已经发生的正式事实，不能把草稿或未来计划当作已发生；第 1 集或没有可承接事实时输出空数组。
+- continuity_contract 固定输出 null。后端会根据上一集正式 Story Memory 生成不可篡改的结构化连续性合同，并在保存 Brief 前覆盖此字段。
 - Story Memory 中 `source=qc_approved` 的 `new_facts`、`character_updates`、`props_and_evidence` 和 `ending_state` 是正式事实；`ending_hook` 只是未解决悬念。
 - 兼容旧项目时若 `source=rule_extracted`，不得把 `episode_goal` 或 `ending_hook` 中没有场景证据的声明升级为正式事实。
 - props_and_evidence 写本集允许出现或承接的道具、证据、线索。
@@ -51,6 +52,7 @@ JSON 结构：
     }
   ],
   "continuity_context": ["需要承接的已发生事实"],
+  "continuity_contract": null,
   "props_and_evidence": ["本集允许出现或承接的道具/证据"],
   "ending_requirement": "结尾钩子的写作边界",
   "target_duration_seconds": 90

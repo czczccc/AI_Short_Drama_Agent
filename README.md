@@ -140,7 +140,7 @@ Invoke-RestMethod -Method Post `
 Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/$($project.id)/showrunner"
 ```
 
-当前 Showrunner 已完成 State、Writer Brief、Writer 接入、QC 门禁、Story Memory v2 和有限自动返修。
+当前 Showrunner 已完成 State、Writer Brief、Writer 接入、QC 门禁、Story Memory v2、有限自动返修、场景证据门禁和跨集连续性合同。
 
 Phase 3.2 可为指定集生成 Writer Brief：
 
@@ -194,7 +194,7 @@ Invoke-RestMethod -Method Post `
   -Body $scriptBody
 ```
 
-系统先执行规则型 QC，再执行 LLM Showrunner QC。QC 只有 `pass` 时才会保存正式剧本，并用审核后的 `approved_memory` 更新 Story Memory v2；`warning` 或 `fail` 会触发最多 `max_revision_attempts` 次返修，达到上限仍未通过则阻断保存。QC 报告仍可查询：
+系统先执行规则型 QC，再执行 LLM Showrunner QC，最后由后端确定性校验 `memory_evidence` 和 `continuity_resolutions`。QC 只有 `pass` 且所有正式记忆都能定位到场景原文、上一集连续性合同逐条处理完成时，才会保存正式剧本，并用审核后的 `approved_memory` 更新 Story Memory v2；`warning` 或 `fail` 会触发最多 `max_revision_attempts` 次返修，达到上限仍未通过则阻断保存。QC 报告仍可查询：
 
 ```powershell
 Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/$($project.id)/episodes/1/showrunner-qc"

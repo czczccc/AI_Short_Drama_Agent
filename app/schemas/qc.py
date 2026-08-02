@@ -54,12 +54,83 @@ class QCIssue(StrictQCModel):
         return value
 
 
+class MemoryEvidence(StrictQCModel):
+    memory_path: str = Field(min_length=1, max_length=200)
+    scene_number: int = Field(ge=1, le=8)
+    evidence_text: ChineseText
+
+
+class ContinuityResolution(StrictQCModel):
+    obligation_id: str = Field(min_length=1, max_length=100)
+    status: Literal["resolved", "carried_forward"]
+    scene_number: int = Field(ge=1, le=8)
+    evidence_text: ChineseText
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_observed_aliases(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            return value
+
+        data = dict(value)
+        evidence_aliases = ("resolution_evidence", "evidence")
+        evidence_values = [
+            data[key]
+            for key in evidence_aliases
+            if key in data and isinstance(data[key], str)
+        ]
+        if evidence_values:
+            first_evidence = evidence_values[0]
+            if any(item != first_evidence for item in evidence_values[1:]):
+                raise ValueError("continuity resolution 证据别名内容冲突")
+            if (
+                "evidence_text" in data
+                and data["evidence_text"] != first_evidence
+            ):
+                raise ValueError("evidence_text 与证据别名内容冲突")
+            data.setdefault("evidence_text", first_evidence)
+        for key in evidence_aliases:
+            if key in data and isinstance(data[key], str):
+                data.pop(key)
+
+        status_aliases = (
+            ("resolved", "resolved"),
+            ("carried_to_next_episode", "carried_forward"),
+            ("carries_forward", "carried_forward"),
+        )
+        inferred_statuses = [
+            status
+            for key, status in status_aliases
+            if data.get(key) is True
+        ]
+        if len(set(inferred_statuses)) > 1:
+            raise ValueError("continuity resolution 状态别名互相冲突")
+        if inferred_statuses:
+            inferred_status = inferred_statuses[0]
+            if "status" in data and data["status"] != inferred_status:
+                raise ValueError("status 与状态别名内容冲突")
+            data.setdefault("status", inferred_status)
+        for key, _ in status_aliases:
+            if key in data and isinstance(data[key], bool):
+                data.pop(key)
+
+        for key in ("kind", "resolution_notes"):
+            if key in data and isinstance(data[key], str):
+                data.pop(key)
+
+        return data
+
+
 class QCReport(StrictQCModel):
     episode_number: int = Field(ge=1, le=10)
     status: Literal["pass", "warning", "fail"]
     summary: ChineseText
     issues: list[QCIssue] = Field(default_factory=list)
     approved_memory: EpisodeMemory | None = None
+    memory_evidence: list[MemoryEvidence] = Field(default_factory=list)
+    continuity_resolutions: list[ContinuityResolution] = Field(
+        default_factory=list
+    )
 
     @model_validator(mode="after")
     def validate_report_context(self, info: ValidationInfo) -> "QCReport":

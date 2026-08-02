@@ -17,6 +17,8 @@
 - `story_memory`：此前已生成剧本沉淀的事实、角色状态、道具证据和未解决问题。
 - `writer_brief`：可选的 Showrunner 写作 Brief；不为 `null` 时，它是当前集写作边界和 QC 审核依据。
 - `script`：当前要检查的单集剧本。
+- `evidence_catalog`：后端从剧本场景提取的允许引用证据清单，每项只有 `scene_number` 和 `evidence_text`。
+- `ending_state_reference`：后端确定的最后一场地点和时间，来自 `script.scenes` 的最后一项。
 - `rule_issues`：后端规则型 QC 已发现的问题；必须保留，不得擅自忽略或降低严重级别。
 
 ## 检查重点
@@ -32,7 +34,7 @@
 5. 角色是否知道了其不可能知道的信息。
 6. 角色动机、说话方式、行为边界、标志道具是否和角色设定冲突。
 7. 道具、证据、地点、时间线是否前后一致。
-8. 当 `writer_brief` 不为 `null` 时，剧本是否遵守其中的 `allowed_scope`、`required_beats`、`forbidden_content`、`character_states`、`continuity_context`、`props_and_evidence` 和 `ending_requirement`。
+8. 当 `writer_brief` 不为 `null` 时，剧本是否遵守其中的 `allowed_scope`、`required_beats`、`forbidden_content`、`character_states`、`continuity_context`、`continuity_contract`、`props_and_evidence` 和 `ending_requirement`。
 9. 如果剧本写出了 `writer_brief.forbidden_content` 中禁止的内容，或没有完成 `required_beats`，应判定为 `fail`。
 10. 是否存在明显影响后续 Storyboard 或视频生成的结构问题。
 11. `opening_hook` 是否在第一场动作或对白中真正发生。
@@ -40,6 +42,12 @@
 13. 上一集结束时的地点、时间、人物处境和道具状态是否得到承接或合理解释。
 
 当且仅当 `status=pass` 时，必须根据剧本实际场景输出 `approved_memory`。不得把只存在于 `episode_goal`、`opening_hook` 或 `ending_hook` 字段、却没有在场景中真正发生的内容写入正式事实。
+
+`status=pass` 时还必须输出：
+
+- `memory_evidence`：为 `approved_memory` 中每一条可持久化事实提供证据。每项必须完整复制同一条清单中的 `scene_number` 和 `evidence_text`，不得概括、改写、拼接或缩短证据文字，不能引用 `scene_goal` 或剧本顶部声明。
+- `continuity_resolutions`：当 `writer_brief.continuity_contract` 不为 `null` 时，逐条说明合同事项已在本集解决还是继续带到下一集。每项同样必须完整复制同一条 `evidence_catalog` 记录中的 `scene_number` 和 `evidence_text`。`kind=ending_state` 必须在第 1 场承接。
+- 第 1–9 集中，每条 `unresolved_questions` 都必须在 `continuity_obligations` 中建立下一集到期的事项，并用 `source_memory_path` 指向对应的 `unresolved_questions.N`。道具、承诺等其他待续事项可指向实际存在的 `props_and_evidence.N`、`ending_hook` 或其他正式记忆路径。
 
 ## 输出格式
 
@@ -59,7 +67,9 @@
       "suggestion": "保留发现证据的悬念，不要在本集确认证据结论。"
     }
   ],
-  "approved_memory": null
+  "approved_memory": null,
+  "memory_evidence": [],
+  "continuity_resolutions": []
 }
 ```
 
@@ -74,9 +84,15 @@
 - 有严重连续性错误、越界展开或角色事实矛盾时：`status` 为 `fail`。
 - `status=warning` 或 `status=fail` 时，`approved_memory` 必须为 `null`。
 - `status=pass` 时，`approved_memory` 必须完整输出，`source` 固定为 `qc_approved`。
-- `approved_memory` 必须包含 `episode_number`、`source`、`summary`、`new_facts`、`revealed_secrets`、`unresolved_questions`、`character_updates`、`props_and_evidence`、`ending_state` 和 `ending_hook`。
+- `approved_memory` 必须包含 `episode_number`、`source`、`summary`、`new_facts`、`revealed_secrets`、`unresolved_questions`、`character_updates`、`props_and_evidence`、`ending_state`、`ending_hook` 和 `continuity_obligations`。
+- `memory_evidence.memory_path` 必须逐条覆盖：`summary`、`new_facts.N`、`revealed_secrets.N`、`unresolved_questions.N`、`character_updates.<character_id>.knows.N`、非空的 `current_goal`、`relationship_changes.N`、`props_and_evidence.N`、`ending_state`、`ending_hook` 和 `continuity_obligations.N`。
+- `relationship_changes` 必须是中文字符串数组，例如 `["林峰开始信任苏妍。"]`，不得输出对象数组。
+- `continuity_obligations.N.kind` 只能是 `ending_state`、`active_crisis`、`promise` 或 `prop_or_evidence`。
+- `continuity_resolutions` 的每项必须且只能包含 `obligation_id`、`status`、`scene_number` 和 `evidence_text`；`status` 只能是 `resolved` 或 `carried_forward`，不得改用布尔字段或自定义字段。
+- 每个 `memory_path` 恰好出现一次，不得引用不存在的路径。
 - `character_updates.current_goal` 没有明确目标时必须输出 `null`，不得输出空字符串。
-- `ending_state` 必须记录最后一场真实的 `location`、`time_of_day` 和人物处境 `situation`。
+- `knows` 必须始终输出中文字符串数组（字段路径为 `character_updates.<character_id>.knows`）；只有一条也要使用数组，没有可靠认知变化时输出 `[]`，不得输出字符串、对象或 `null`。
+- `ending_state` 必须记录最后一场真实的人物处境；其中必须原样复制 `ending_state_reference.location` 和 `ending_state_reference.time_of_day`，不得使用上一场、概括地点或同义表达。
 - `props_and_evidence` 必须记录本集真实出现或发生变化的关键道具，包含 `name`、`owner`、`status` 和 `first_episode`。
 
 `status=pass` 示例中的 `approved_memory` 结构：
@@ -115,7 +131,78 @@
       "time_of_day": "深夜",
       "situation": "林峰看到日志中出现苏妍父亲的名字。"
     },
-    "ending_hook": "日志中的名字为何出现。"
-  }
+    "ending_hook": "日志中的名字为何出现。",
+    "continuity_obligations": [
+      {
+        "obligation_id": "e1_trace_log_name",
+        "kind": "active_crisis",
+        "description": "追查日志中的异常名字。",
+        "source_episode_number": 1,
+        "due_episode_number": 2,
+        "source_memory_path": "unresolved_questions.0"
+      }
+    ]
+  },
+  "memory_evidence": [
+    {
+      "memory_path": "summary",
+      "scene_number": 2,
+      "evidence_text": "复制完成"
+    },
+    {
+      "memory_path": "new_facts.0",
+      "scene_number": 2,
+      "evidence_text": "复制完成"
+    },
+    {
+      "memory_path": "unresolved_questions.0",
+      "scene_number": 3,
+      "evidence_text": "屏幕上跳出苏妍父亲的名字"
+    },
+    {
+      "memory_path": "character_updates.lin_feng.knows.0",
+      "scene_number": 2,
+      "evidence_text": "复制完成"
+    },
+    {
+      "memory_path": "character_updates.lin_feng.current_goal",
+      "scene_number": 3,
+      "evidence_text": "屏幕上跳出苏妍父亲的名字"
+    },
+    {
+      "memory_path": "props_and_evidence.0",
+      "scene_number": 2,
+      "evidence_text": "复制完成"
+    },
+    {
+      "memory_path": "ending_state",
+      "scene_number": 3,
+      "evidence_text": "屏幕上跳出苏妍父亲的名字"
+    },
+    {
+      "memory_path": "ending_hook",
+      "scene_number": 3,
+      "evidence_text": "屏幕上跳出苏妍父亲的名字"
+    },
+    {
+      "memory_path": "continuity_obligations.0",
+      "scene_number": 3,
+      "evidence_text": "屏幕上跳出苏妍父亲的名字"
+    }
+  ],
+  "continuity_resolutions": []
 }
+```
+
+当 `writer_brief.continuity_contract` 不为 `null` 时，`continuity_resolutions` 必须使用以下非空结构；每个合同事项恰好对应一项：
+
+```json
+"continuity_resolutions": [
+  {
+    "obligation_id": "episode_1_ending_state",
+    "status": "resolved",
+    "scene_number": 1,
+    "evidence_text": "屏幕上的名字仍在闪烁"
+  }
+]
 ```

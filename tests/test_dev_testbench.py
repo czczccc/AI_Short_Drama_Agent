@@ -1,3 +1,5 @@
+import json
+
 from fastapi.testclient import TestClient
 
 from app.api.main import app
@@ -137,8 +139,18 @@ def test_dev_episode_qc_returns_llm_report(client: TestClient) -> None:
     assert body["report"]["status"] == "warning"
     assert body["report"]["issues"][0]["code"] == "future_boundary_risk"
     assert qc_provider.last_user_prompt is not None
-    assert '"story_memory"' in qc_provider.last_user_prompt
-    assert '"episode_number": 1' in qc_provider.last_user_prompt
+    qc_input = json.loads(qc_provider.last_user_prompt)
+    assert qc_input["story_memory"]["version"] == "story_memory_v2"
+    assert qc_input["current_episode_outline"]["episode_number"] == 1
+    assert {
+        "scene_number": 1,
+        "evidence_text": "电脑突然开始远程自毁，警报声逼近，林峰迅速复制关键文件。",
+    } in qc_input["evidence_catalog"]
+    assert qc_input["ending_state_reference"] == {
+        "scene_number": 3,
+        "location": "人工智能公司机房",
+        "time_of_day": "深夜",
+    }
 
 
 def test_dev_episode_qc_returns_404_when_script_missing(client: TestClient) -> None:

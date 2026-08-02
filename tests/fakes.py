@@ -1,3 +1,4 @@
+import json
 from typing import TypeVar
 
 from pydantic import BaseModel
@@ -86,7 +87,17 @@ def valid_script_data(
                 "time_of_day": "深夜",
                 "characters": [character_id],
                 "scene_goal": f"完成第{number}步取证。",
-                "action": "警报声逼近，林峰迅速复制关键文件。",
+                "action": (
+                    "电脑突然开始远程自毁，警报声逼近，"
+                    "林峰迅速复制关键文件。"
+                    if number == 1
+                    else (
+                        "警报声逼近，林峰迅速复制关键文件。"
+                        "文件打开后，屏幕上出现苏妍父亲的名字。"
+                        if number == 3
+                        else "警报声逼近，林峰迅速复制关键文件。"
+                    )
+                ),
                 "dialogues": [
                     {
                         "character_id": character_id,
@@ -173,6 +184,70 @@ def valid_qc_report_data(episode_number: int = 1) -> dict:
 
 
 def valid_qc_pass_report_data(episode_number: int = 1) -> dict:
+    obligations = (
+        [
+            {
+                "obligation_id": f"e{episode_number}_trace_the_name",
+                "kind": "active_crisis",
+                "description": "追查屏幕上出现的名字。",
+                "source_episode_number": episode_number,
+                "due_episode_number": episode_number + 1,
+                "source_memory_path": "unresolved_questions.0",
+            }
+        ]
+        if episode_number < 10
+        else []
+    )
+    memory_evidence = [
+        {
+            "memory_path": "summary",
+            "scene_number": 3,
+            "evidence_text": "林峰迅速复制关键文件",
+        },
+        {
+            "memory_path": "new_facts.0",
+            "scene_number": 3,
+            "evidence_text": "林峰迅速复制关键文件",
+        },
+        {
+            "memory_path": "unresolved_questions.0",
+            "scene_number": 3,
+            "evidence_text": "屏幕上出现苏妍父亲的名字",
+        },
+        {
+            "memory_path": "character_updates.lin_feng.knows.0",
+            "scene_number": 3,
+            "evidence_text": "林峰迅速复制关键文件",
+        },
+        {
+            "memory_path": "character_updates.lin_feng.current_goal",
+            "scene_number": 3,
+            "evidence_text": "屏幕上出现苏妍父亲的名字",
+        },
+        {
+            "memory_path": "props_and_evidence.0",
+            "scene_number": 3,
+            "evidence_text": "林峰迅速复制关键文件",
+        },
+        {
+            "memory_path": "ending_state",
+            "scene_number": 3,
+            "evidence_text": "屏幕上出现苏妍父亲的名字",
+        },
+        {
+            "memory_path": "ending_hook",
+            "scene_number": 3,
+            "evidence_text": "屏幕上出现苏妍父亲的名字",
+        },
+    ]
+    if obligations:
+        memory_evidence.append(
+            {
+                "memory_path": "continuity_obligations.0",
+                "scene_number": 3,
+                "evidence_text": "屏幕上出现苏妍父亲的名字",
+            }
+        )
     return {
         "episode_number": episode_number,
         "status": "pass",
@@ -207,7 +282,10 @@ def valid_qc_pass_report_data(episode_number: int = 1) -> dict:
                 "situation": "林峰看到文件中出现苏妍父亲的名字。",
             },
             "ending_hook": "日志中的名字为何出现。",
+            "continuity_obligations": obligations,
         },
+        "memory_evidence": memory_evidence,
+        "continuity_resolutions": [],
     }
 
 
@@ -388,9 +466,27 @@ class FakeLLMProvider:
             return output_schema.model_validate(script_data)
         if output_schema is QCReport:
             if self.qc_status == "pass":
-                return output_schema.model_validate(
-                    valid_qc_pass_report_data(self.script_episode_number)
+                data = valid_qc_pass_report_data(self.script_episode_number)
+                try:
+                    qc_input = json.loads(user_prompt)
+                except ValueError:
+                    qc_input = {}
+                contract = (
+                    (qc_input.get("writer_brief") or {}).get(
+                        "continuity_contract"
+                    )
+                    or {}
                 )
+                data["continuity_resolutions"] = [
+                    {
+                        "obligation_id": obligation["obligation_id"],
+                        "status": "resolved",
+                        "scene_number": 1,
+                        "evidence_text": "电脑突然开始远程自毁",
+                    }
+                    for obligation in contract.get("must_continue", [])
+                ]
+                return output_schema.model_validate(data)
             if self.qc_status == "fail":
                 return output_schema.model_validate(
                     valid_qc_fail_report_data(self.script_episode_number)

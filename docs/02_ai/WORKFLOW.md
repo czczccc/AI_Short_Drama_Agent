@@ -48,6 +48,14 @@ Phase S3-5 增加 QC v2 连续性门禁：规则型 QC 先检查场景密度和�
 
 Story Memory v2：QC 通过时，QC 报告必须同时输出基于实际场景的 `approved_memory`，包含新增事实、角色认知、道具与证据、未解决问题和末场状态。只有该快照会以 `source=qc_approved` 写入正式上下文。未开启 QC 的兼容流程仍可生成 `source=rule_extracted` 的保守摘要，但 Writer 和 Brief 不得把其中仅存在于顶部目标或钩子字段的声明视为已发生事实。重生成第 N 集仍会删除第 N 集之后的旧 memory。
 
+Phase S3-6A 为 `approved_memory` 增加确定性证据门禁。QC 通过报告必须用 `memory_evidence` 把每条记忆路径映射到指定场景中的动作、对白、动作提示或转场原文；后端拒绝缺失路径、重复路径、无效场号、找不到的原文片段，以及和最后一场地点/时间不一致的 `ending_state`。首次失败会把安全原因码反馈给 QC Agent 重答一次，第二次仍失败返回 502，不保存剧本或记忆。
+
+Phase S3-6B 在上一集 QC 通过时把未解决事项保存为 `continuity_obligations`。生成下一集 Writer Brief 时，服务层自动根据上一集 `source=qc_approved` 的 `ending_state` 和到期事项注入 `continuity_contract`，不信任模型自行生成该字段；`source=rule_extracted` 的兼容记忆不会生成强制合同。Writer 必须承接合同；QC 通过报告必须逐条输出 `continuity_resolutions`。上一集结尾状态只能在下一集第一场承接，未解决但要继续的事项必须再次写入本集正式记忆。
+
+Phase S3-6.1 修复真实模型在非空 `continuity_resolutions` 上的字段漂移。QC Prompt 提供完整非空示例；Schema 边界仅把已观察到的状态和证据别名归一化为标准字段。场号、证据内容和合同事项 ID 不做推断，关系变更对象、非法义务类型、冲突别名及未知字段继续拒绝，因此不改变证据门禁和“QC 通过后才保存”的流程原则。
+
+Phase S3-6.2 为 QC 提供由当前 draft 确定性生成的场景证据清单和最后一场地点时间引用。模型不再自由改写证据文字，只能完整复制清单中的场号和原文到 `memory_evidence` 与 `continuity_resolutions`，并原样复制最后一场的地点和时间到 `ending_state`。进入门禁前仅清理不对应正式记忆的辅助证据和完全相同的重复项；清单和最终校验使用同一组可引用场景字段，仍拒绝不存在的必需证据、相互冲突的重复项、缺失义务和错误关系结构。该阶段不改变 API、数据库或 Story Memory 保存原则。
+
 Showrunner 门禁流程原则：Writer 生成的剧本在 `run_showrunner_qc=true` 时先作为 draft 接受规则型 QC 和 Showrunner QC；只有 QC 通过后，才能保存为正式剧本并更新正式 Story Memory。QC 不通过时，草稿事实不得写入 `memory_json`。
 
 LLM QC v1 是剧本生成后的人工确认辅助步骤：对已保存的第 N 集剧本读取 Story Outline、Character Bible、Story Memory 和当前剧本，调用 QC Agent 生成结构化质检报告。v1 只返回问题清单、严重级别和修改建议，不自动改写剧本、不覆盖已保存剧本。确认 QC 报告后，再由人工决定是否重生成或手动编辑剧本。

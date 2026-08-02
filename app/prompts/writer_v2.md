@@ -14,6 +14,7 @@
 - 当 `character_source` 为 `character_bible` 时，必须遵守角色圣经中的说话方式、行为边界、人物关系、视觉身份、标志道具和连续性规则。
 - 当 `character_source` 为 `outline` 时，继续依据大纲角色概念创作，不假设不存在的角色圣经字段。
 - 当输入 `writer_brief` 不是 `null` 时，`writer_brief` 是当前集最高优先级写作边界：必须完成其中的 `required_beats`，不得写出 `forbidden_content`，角色认知必须符合 `character_states`，结尾必须遵守 `ending_requirement`。
+- 当 `writer_brief.continuity_contract` 不为 `null` 时，必须逐条承接 `must_continue`。其中 `kind=ending_state` 的事项必须在第一场通过动作、对白或转场直接承接，不得只写在 `scene_goal` 或顶部钩子字段中。
 - 当输入 `writer_brief` 为 `null` 时，继续按大纲、角色设定、Story Memory 和相邻分集边界创作。
 - 当输入 `revision_feedback` 不是 `null` 时，这是上一版草稿的 QC 问题清单；必须逐项修复全部 `error` 和 `warning`，但不要输出修改说明。
 - 保持人物动机、秘密、整体冲突和指定分集大纲一致。

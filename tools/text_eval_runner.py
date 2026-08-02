@@ -50,6 +50,16 @@ IDEAS: dict[str, dict[str, str]] = {
 }
 
 
+def episode_window(start_episode: int, end_episode: int) -> list[int]:
+    if not 1 <= start_episode <= 10:
+        raise ValueError("start_episode must be between 1 and 10.")
+    if not 1 <= end_episode <= 10:
+        raise ValueError("end_episode must be between 1 and 10.")
+    if start_episode > end_episode:
+        raise ValueError("start_episode must not exceed end_episode.")
+    return list(range(start_episode, end_episode + 1))
+
+
 def _perform_request_for_eval(
     method: str,
     path: str,
@@ -238,7 +248,9 @@ class EvalRunner:
         reuse_showrunner: bool = False,
         regenerate_characters: bool = False,
         start_episode: int = 1,
+        end_episode: int = 5,
     ) -> dict[str, Any]:
+        episode_numbers = episode_window(start_episode, end_episode)
         case = IDEAS[case_key]
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         slug = f"{timestamp}_{case_key}"
@@ -320,10 +332,31 @@ class EvalRunner:
                 json_body=None if reuse_showrunner else {},
             )
 
-            writer_briefs: dict[str, Any] = {}
+            stored_showrunner = showrunner["showrunner"]
+            writer_briefs: dict[str, Any] = {
+                number: {
+                    "project_id": project_id,
+                    "episode_number": int(number),
+                    "brief": brief,
+                }
+                for number, brief in stored_showrunner.get(
+                    "writer_briefs",
+                    {},
+                ).items()
+            }
             scripts: dict[str, Any] = existing_scripts
-            qc_reports: dict[str, Any] = {}
-            for episode_number in range(start_episode, 6):
+            qc_reports: dict[str, Any] = {
+                number: {
+                    "project_id": project_id,
+                    "episode_number": int(number),
+                    "report": report,
+                }
+                for number, report in stored_showrunner.get(
+                    "qc_reports",
+                    {},
+                ).items()
+            }
+            for episode_number in episode_numbers:
                 brief = self.request(
                     client,
                     "POST",
@@ -435,8 +468,18 @@ class EvalRunner:
                 ]
             )
 
-        parts.extend(["## 第 1-5 集剧本原文", ""])
-        for episode_number in range(1, 6):
+        episode_numbers = sorted(int(number) for number in scripts)
+        parts.extend(
+            [
+                (
+                    f"## 第 {episode_numbers[0]}-{episode_numbers[-1]} 集剧本原文"
+                    if episode_numbers
+                    else "## 剧本原文"
+                ),
+                "",
+            ]
+        )
+        for episode_number in episode_numbers:
             script = scripts[str(episode_number)]["script"]
             report = qc_reports.get(str(episode_number), {}).get("report")
             parts.extend(
@@ -582,9 +625,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--start-episode",
         type=int,
-        choices=range(1, 6),
+        choices=range(1, 11),
         default=1,
-        help="First episode to generate (1-5). Use with resume to continue a run.",
+        help="First episode to generate (1-10). Use with resume to continue a run.",
+    )
+    parser.add_argument(
+        "--end-episode",
+        type=int,
+        choices=range(1, 11),
+        default=5,
+        help="Last episode to generate (1-10). Defaults to 5.",
     )
     parser.add_argument(
         "--max-revision-attempts",
@@ -633,6 +683,7 @@ def main() -> None:
                 reuse_showrunner=args.reuse_showrunner,
                 regenerate_characters=args.regenerate_characters,
                 start_episode=args.start_episode,
+                end_episode=args.end_episode,
             )
         except Exception as exc:
             runner.write_request_logs()

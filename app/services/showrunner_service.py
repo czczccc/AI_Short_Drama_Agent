@@ -9,7 +9,12 @@ from app.models.project import Project
 from app.observability.logging import log_event
 from app.providers.llm.base import LLMProvider, LLMResponseValidationError
 from app.schemas.qc import QCReport
+from app.schemas.memory import (
+    ContinuityObligation,
+    StoryMemory,
+)
 from app.schemas.showrunner import (
+    ContinuityContract,
     ShowrunnerQCResponse,
     ShowrunnerResponse,
     ShowrunnerState,
@@ -163,6 +168,48 @@ def _ensure_episode_in_plan(state: ShowrunnerState, episode_number: int) -> None
         raise ShowrunnerEpisodeNotFoundError
 
 
+def build_continuity_contract(
+    story_memory: StoryMemory,
+    episode_number: int,
+) -> ContinuityContract | None:
+    if episode_number <= 1:
+        return None
+    previous_episode_number = episode_number - 1
+    previous = story_memory.episodes.get(str(previous_episode_number))
+    if (
+        previous is None
+        or previous.source != "qc_approved"
+        or previous.ending_state is None
+    ):
+        return None
+
+    ending_obligation = ContinuityObligation(
+        obligation_id=f"episode_{previous_episode_number}_ending_state",
+        kind="ending_state",
+        description=(
+            f"承接上一集在{previous.ending_state.location}、"
+            f"{previous.ending_state.time_of_day}的结尾处境："
+            f"{previous.ending_state.situation}"
+        ),
+        source_episode_number=previous_episode_number,
+        due_episode_number=episode_number,
+        source_memory_path="ending_state",
+    )
+    due_obligations = [
+        obligation
+        for obligation in previous.continuity_obligations
+        if obligation.due_episode_number == episode_number
+    ]
+    deduplicated = {ending_obligation.obligation_id: ending_obligation}
+    for obligation in due_obligations:
+        deduplicated.setdefault(obligation.obligation_id, obligation)
+    return ContinuityContract(
+        previous_episode_number=previous_episode_number,
+        previous_ending_state=previous.ending_state,
+        must_continue=list(deduplicated.values()),
+    )
+
+
 def generate_writer_brief(
     db: Session,
     project_id: int,
@@ -195,6 +242,15 @@ def generate_writer_brief(
         raise LLMResponseValidationError(
             "Writer brief target_duration_seconds mismatch"
         )
+    brief = WriterBrief.model_validate(
+        {
+            **brief.model_dump(mode="json"),
+            "continuity_contract": build_continuity_contract(
+                story_memory,
+                episode_number,
+            ),
+        }
+    )
 
     state_data = state.model_dump(mode="json")
     writer_briefs = dict(state_data.get("writer_briefs") or {})

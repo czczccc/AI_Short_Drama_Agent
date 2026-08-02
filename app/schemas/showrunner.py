@@ -1,5 +1,9 @@
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.schemas.memory import (
+    ContinuityObligation,
+    EpisodeEndingState,
+)
 from app.schemas.outline import CharacterId, ChineseText
 from app.schemas.qc import QCReport
 
@@ -68,6 +72,12 @@ class WriterBriefCharacterState(StrictShowrunnerModel):
     must_not_know: list[ChineseText]
 
 
+class ContinuityContract(StrictShowrunnerModel):
+    previous_episode_number: int = Field(ge=1, le=9)
+    previous_ending_state: EpisodeEndingState
+    must_continue: list[ContinuityObligation] = Field(min_length=1)
+
+
 class WriterBrief(StrictShowrunnerModel):
     episode_number: int = Field(ge=1, le=10)
     episode_goal: ChineseText
@@ -76,6 +86,7 @@ class WriterBrief(StrictShowrunnerModel):
     forbidden_content: list[ChineseText] = Field(min_length=1)
     character_states: list[WriterBriefCharacterState] = Field(min_length=1)
     continuity_context: list[ChineseText]
+    continuity_contract: ContinuityContract | None = None
     props_and_evidence: list[ChineseText] = Field(min_length=1)
     ending_requirement: ChineseText
     target_duration_seconds: int = Field(ge=30, le=600)

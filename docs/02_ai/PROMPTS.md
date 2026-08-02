@@ -87,6 +87,14 @@ LLM QC v1 使用 `app/prompts/qc_v1.md`。Prompt 要求：
 - 检查顶部声明的开场与结尾钩子是否在第一场和最后一场真正发生
 - 接收后端规则型 QC 问题，不能忽略或降低严重级别
 - `status=pass` 时基于实际场景输出 `approved_memory`，用于 Story Memory v2
+- `status=pass` 时用 `memory_evidence` 为每条正式记忆路径提供可在场景动作、对白或转场中逐字找到的证据
+- 输入服务端生成的 `evidence_catalog`，证据必须完整复制其中同一条记录的场号和原文，不得概括、拼接或缩短
+- 输入服务端生成的 `ending_state_reference`，正式记忆的最后地点和时间必须原样复制
+- 第 1–9 集未解决问题输出下一集到期的 `continuity_obligations`
+- Writer Brief 存在 `continuity_contract` 时逐条输出 `continuity_resolutions`；上一集末场状态必须在第一场承接
+- 提供非空 `continuity_resolutions` 示例，明确每项只能包含 `obligation_id`、`status`、`scene_number`、`evidence_text`
+- 明确 `relationship_changes` 只能是中文字符串数组，`continuity_obligations.kind` 只能使用固定枚举
+- 明确角色 `knows` 始终为字符串数组，每条未解决问题必须映射一条下一集义务
 - 问题码使用固定枚举，便于自动返修和回归统计
 - 只输出合法 JSON，不包含 Markdown 或解释文字
 - 输出必须符合 `QCReport`，`status` 只能是 `pass`、`warning` 或 `fail`
@@ -118,6 +126,7 @@ Phase 3.2 使用 `app/prompts/showrunner/brief_v1.py`。Prompt 要求：
 - 输入 Showrunner State、当前集 Episode Plan、角色整季起止状态、当前集关键 beat（如有）、此前最近转折、下一次未来转折、Story Memory 和目标时长
 - 当前集没有专属 beat 时根据 Episode Plan 和最近已发生转折推导；未来转折只用于限制边界
 - Brief 必须明确本集 `allowed_scope`、`required_beats`、`forbidden_content`、角色当前知道/不能知道的信息、连续性承接、道具证据和结尾钩子边界
+- Prompt 中 `continuity_contract` 固定输出 `null`；服务层在保存前根据上一集正式 Story Memory 覆盖注入
 - `character_states` 只包含本集出场或必须维持连续性的角色，不出场角色不得用空字段占位
 - 角色 `knows` 和 `must_not_know` 无论条目数量多少都必须输出 JSON 数组；没有信息时输出 `[]`
 - 优先承接 `source=qc_approved` 的 Story Memory；`ending_hook` 只作为未解决悬念，不自动视为已发生事实

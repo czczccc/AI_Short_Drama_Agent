@@ -33,6 +33,20 @@ class EpisodeEndingState(StrictScriptModel):
     situation: ChineseText
 
 
+class ContinuityObligation(StrictScriptModel):
+    obligation_id: str = Field(min_length=1, max_length=100)
+    kind: Literal[
+        "ending_state",
+        "active_crisis",
+        "promise",
+        "prop_or_evidence",
+    ]
+    description: ChineseText
+    source_episode_number: int = Field(ge=1, le=10)
+    due_episode_number: int = Field(ge=1, le=10)
+    source_memory_path: str = Field(min_length=1, max_length=200)
+
+
 class EpisodeMemory(StrictScriptModel):
     episode_number: int = Field(ge=1, le=10)
     source: Literal["rule_extracted", "qc_approved"] = "rule_extracted"
@@ -46,6 +60,9 @@ class EpisodeMemory(StrictScriptModel):
     props_and_evidence: list[PropEvidenceMemory] = Field(default_factory=list)
     ending_state: EpisodeEndingState | None = None
     ending_hook: ChineseText
+    continuity_obligations: list[ContinuityObligation] = Field(
+        default_factory=list
+    )
 
 
 class StoryMemory(StrictScriptModel):

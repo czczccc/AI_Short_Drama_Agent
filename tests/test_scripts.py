@@ -14,6 +14,7 @@ from app.schemas.script import EpisodeScript
 from tests.fakes import (
     FakeLLMProvider,
     FailingLLMProvider,
+    valid_qc_pass_report_data,
     valid_qc_report_data,
     valid_script_data,
 )
@@ -546,6 +547,172 @@ def test_showrunner_qc_pass_saves_script_memory_and_qc_report(
         assert memory["episodes"]["1"]["ending_state"]["location"]
         assert showrunner["qc_reports"]["1"]["status"] == "pass"
         assert showrunner["qc_reports"]["1"]["approved_memory"]["source"] == "qc_approved"
+
+
+def test_showrunner_qc_rejects_ungrounded_approved_memory(
+    client: TestClient,
+    test_session_local,
+) -> None:
+    class UngroundedQCProvider(FakeLLMProvider):
+        def generate_structured(self, system_prompt, user_prompt, output_schema):
+            if output_schema is QCReport:
+                data = valid_qc_pass_report_data()
+                data["memory_evidence"] = []
+                return QCReport.model_validate(data)
+            return super().generate_structured(
+                system_prompt,
+                user_prompt,
+                output_schema,
+            )
+
+    project_id = prepare_showrunner_brief_project(client)
+
+    response = generate_script(
+        client,
+        project_id,
+        provider=UngroundedQCProvider,
+        use_showrunner_brief=True,
+        run_showrunner_qc=True,
+    )
+
+    assert response.status_code == 502
+    with test_session_local() as db:
+        project = db.get(Project, project_id)
+        assert project.scripts_json is None
+        assert project.memory_json is None
+
+
+def test_showrunner_qc_retries_once_after_ungrounded_memory(
+    client: TestClient,
+) -> None:
+    class GroundingRetryProvider(FakeLLMProvider):
+        def __init__(self) -> None:
+            super().__init__(qc_status="pass")
+            self.qc_calls = 0
+
+        def generate_structured(self, system_prompt, user_prompt, output_schema):
+            if output_schema is QCReport:
+                self.qc_calls += 1
+                if self.qc_calls == 1:
+                    data = valid_qc_pass_report_data()
+                    data["memory_evidence"] = []
+                    return QCReport.model_validate(data)
+            return super().generate_structured(
+                system_prompt,
+                user_prompt,
+                output_schema,
+            )
+
+    project_id = prepare_showrunner_brief_project(client)
+    provider = GroundingRetryProvider()
+
+    response = generate_script(
+        client,
+        project_id,
+        provider=lambda: provider,
+        use_showrunner_brief=True,
+        run_showrunner_qc=True,
+    )
+
+    assert response.status_code == 200
+    assert provider.qc_calls == 2
+
+
+def test_showrunner_qc_completes_missing_unresolved_question_obligation(
+    client: TestClient,
+    test_session_local,
+) -> None:
+    class MissingObligationQCProvider(FakeLLMProvider):
+        def generate_structured(self, system_prompt, user_prompt, output_schema):
+            if output_schema is QCReport:
+                data = valid_qc_pass_report_data()
+                data["approved_memory"]["continuity_obligations"] = []
+                data["memory_evidence"] = [
+                    item
+                    for item in data["memory_evidence"]
+                    if not item["memory_path"].startswith("continuity_obligations.")
+                ]
+                return QCReport.model_validate(data)
+            return super().generate_structured(
+                system_prompt,
+                user_prompt,
+                output_schema,
+            )
+
+    project_id = prepare_showrunner_brief_project(client)
+
+    response = generate_script(
+        client,
+        project_id,
+        provider=MissingObligationQCProvider,
+        use_showrunner_brief=True,
+        run_showrunner_qc=True,
+    )
+
+    assert response.status_code == 200
+    with test_session_local() as db:
+        project = db.get(Project, project_id)
+        memory = json.loads(project.memory_json)
+        obligations = memory["episodes"]["1"]["continuity_obligations"]
+        assert len(obligations) == 1
+        assert obligations[0] == {
+            "obligation_id": "e1_unresolved_question_1",
+            "kind": "active_crisis",
+            "description": "日志中的名字为何出现。",
+            "source_episode_number": 1,
+            "due_episode_number": 2,
+            "source_memory_path": "unresolved_questions.0",
+        }
+
+
+def test_cross_episode_contract_is_resolved_before_second_script_is_saved(
+    client: TestClient,
+    test_session_local,
+) -> None:
+    project_id = prepare_showrunner_brief_project(client)
+    assert (
+        generate_script(
+            client,
+            project_id,
+            provider=lambda: FakeLLMProvider(qc_status="pass"),
+            use_showrunner_brief=True,
+            run_showrunner_qc=True,
+        ).status_code
+        == 200
+    )
+    app.dependency_overrides[get_configured_llm_provider] = lambda: FakeLLMProvider(
+        writer_brief_episode_number=2
+    )
+    brief_response = client.post(
+        f"/projects/{project_id}/episodes/2/writer-brief",
+        json={"target_duration_seconds": 90},
+    )
+    assert brief_response.status_code == 200
+    assert brief_response.json()["brief"]["continuity_contract"] is not None
+
+    response = generate_script(
+        client,
+        project_id,
+        episode_number=2,
+        provider=lambda: FakeLLMProvider(
+            script_episode_number=2,
+            writer_brief_episode_number=2,
+            qc_status="pass",
+        ),
+        use_showrunner_brief=True,
+        run_showrunner_qc=True,
+    )
+
+    assert response.status_code == 200
+    with test_session_local() as db:
+        project = db.get(Project, project_id)
+        showrunner = json.loads(project.showrunner_json)
+        report = showrunner["qc_reports"]["2"]
+        assert {
+            item["obligation_id"]
+            for item in report["continuity_resolutions"]
+        } == {"episode_1_ending_state", "e1_trace_the_name"}
+        assert "2" in json.loads(project.memory_json)["episodes"]
 
 
 def test_showrunner_qc_fail_does_not_save_script_or_memory_but_stores_report(

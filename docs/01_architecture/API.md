@@ -337,7 +337,11 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/1/characters"
 
 项目必须已有有效大纲；同一集重新生成会覆盖该集旧剧本，不影响其他集。`use_showrunner_brief` 默认为 `false`，保持旧流程；设置为 `true` 时，系统会读取已保存的当前集 Writer Brief 并传给 Writer Agent，Brief 不存在时返回错误，不会自动生成 Brief。
 
-`run_showrunner_qc` 默认为 `false`；设置为 `true` 时，系统先执行规则型 QC，再执行 LLM Showrunner QC。只有最终 `status=pass` 时才保存正式剧本，并使用 QC 输出的 `approved_memory` 更新 Story Memory v2。`warning` 或 `fail` 不写入正式剧本和 Story Memory。
+`run_showrunner_qc` 默认为 `false`；设置为 `true` 时，系统先执行规则型 QC，再执行 LLM Showrunner QC，最后确定性校验正式记忆证据和跨集连续性合同。只有最终 `status=pass`，且 `approved_memory` 每条事实都由 `memory_evidence` 定位到实际场景原文、`continuity_contract` 每项都存在有效 `continuity_resolutions` 时，才保存正式剧本并更新 Story Memory v2。`warning`、`fail` 或证据校验失败都不写入正式剧本和 Story Memory。
+
+调用 LLM QC 前，后端会从当前 draft 的场景动作、对白、动作提示和转场生成内部 `evidence_catalog`，并从最后一场生成 `ending_state_reference`。这些字段只作为模型输入，不改变本接口请求或响应结构。QC 的记忆证据和合同处理证据必须完整复制清单中的场号和原文，正式记忆的最后地点和时间必须复制权威引用。后端会移除不对应正式记忆路径的辅助证据以及完全相同的重复证据，但仍拒绝缺失或冲突的必需证据，并继续逐字校验，不进行模糊匹配。
+
+模型在 `continuity_resolutions` 中使用已知的状态或证据字段别名时，后端会在 Schema 边界归一化；已知但不参与正式结果的 `kind`、`resolution_notes` 会被移除，接口始终以标准的 `obligation_id`、`status`、`scene_number`、`evidence_text` 响应和保存。后端不会推断缺失的场号或证据；别名互相冲突、字段缺失、其他未知额外字段或错误嵌套类型仍按结构响应无效处理。
 
 `max_revision_attempts` 默认为 `0`，范围为 `0–2`，只有 `run_showrunner_qc=true` 时可用。大于 `0` 时，系统把 QC 问题作为 `revision_feedback` 交给 Writer 重新生成，直到通过或达到上限。多次返修会累积并去重此前全部问题，避免修复新问题时重新引入旧错误。被拒绝的 draft 不保存正文；每次尝试只在结构化日志中记录尝试序号、状态和安全问题码。Showrunner State 只保存该集最近一次 QC 报告。
 
@@ -351,7 +355,7 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/1/characters"
 - `409`：`run_showrunner_qc=true` 但未开启 `use_showrunner_brief`
 - `409`：Showrunner QC 未通过，draft 未保存
 - `422`：请求参数错误，例如返修次数超过 2，或未启用 QC 却请求自动返修
-- `502`：LLM 调用、JSON 解析或 Schema 校验失败
+- `502`：LLM 调用、JSON/Schema 校验失败，或 QC 在一次重答后仍无法提供有效场景证据
 - `503`：LLM Provider 或 API Key 配置不可用
 
 ## 生成 Showrunner State
@@ -508,6 +512,7 @@ Showrunner Agent 根据已保存的 Showrunner State、指定集 Episode Plan、
       }
     ],
     "continuity_context": ["只能承接此前正式剧本中已经发生的事实。"],
+    "continuity_contract": null,
     "props_and_evidence": ["旧电脑、服务器记录可以作为线索。"],
     "ending_requirement": "结尾制造下一步追查悬念，但不得解答下一集核心问题。",
     "target_duration_seconds": 90
@@ -539,6 +544,31 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/1/episodes/1/write
 角色状态中的 `knows` 和 `must_not_know` 只记录有明确依据的认知边界；确实没有相应信息时允许为空数组，系统不会要求模型编造占位事实。
 
 `continuity_context` 只允许引用正式 Story Memory；第 1 集或没有可承接事实时允许为空数组。
+
+`continuity_contract` 由服务端在 Brief 保存前根据上一集 `source=qc_approved` 的正式 Story Memory 生成，LLM 输出不能覆盖。第 1 集、上一集只有兼容性的 `source=rule_extracted` 记忆，或上一集没有正式 `ending_state` 时为 `null`；否则结构如下：
+
+```json
+{
+  "previous_episode_number": 1,
+  "previous_ending_state": {
+    "location": "人工智能公司机房",
+    "time_of_day": "深夜",
+    "situation": "林峰看到文件中出现苏妍父亲的名字。"
+  },
+  "must_continue": [
+    {
+      "obligation_id": "episode_1_ending_state",
+      "kind": "ending_state",
+      "description": "承接上一集末场地点、时间和人物处境。",
+      "source_episode_number": 1,
+      "due_episode_number": 2,
+      "source_memory_path": "ending_state"
+    }
+  ]
+}
+```
+
+`kind=ending_state` 的事项必须在当前集第一场承接。上一集 QC 保存的其他到期 `continuity_obligations` 也会出现在 `must_continue`。
 
 常见错误：
 
@@ -578,12 +608,55 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/1/episodes/1/showr
         "suggestion": "删除最终答案，只保留触发下一步追查的悬念。"
       }
     ],
-    "approved_memory": null
+    "approved_memory": null,
+    "memory_evidence": [],
+    "continuity_resolutions": []
   }
 }
 ```
 
-QC 通过时 `issues` 为空，`approved_memory` 包含从实际场景审核得到的本集事实、人物认知、道具状态和末场状态，其 `source` 固定为 `qc_approved`。`warning` 或 `fail` 时该字段为 `null`。
+QC 通过时 `issues` 为空，`approved_memory` 包含从实际场景审核得到的本集事实、人物认知、道具状态、末场状态和下一集到期的 `continuity_obligations`，其 `source` 固定为 `qc_approved`。`memory_evidence` 中每个 `memory_path` 必须恰好覆盖一条可持久化事实，`evidence_text` 必须能在指定场景的动作、对白、动作提示或转场中逐字找到。当 Brief 中存在 `continuity_contract` 时，`continuity_resolutions` 必须逐条标记 `resolved` 或 `carried_forward` 并提供场景证据；带到下一集的事项还必须继续写入本集 `approved_memory.continuity_obligations`。`warning` 或 `fail` 时 `approved_memory` 为 `null`。
+
+QC 通过报告中的新增结构示例：
+
+```json
+{
+  "approved_memory": {
+    "episode_number": 2,
+    "source": "qc_approved",
+    "summary": "林峰承接机房危机并追查异常名字。",
+    "new_facts": ["林峰开始追查异常名字。"],
+    "revealed_secrets": [],
+    "unresolved_questions": [],
+    "character_updates": {},
+    "props_and_evidence": [],
+    "ending_state": {
+      "location": "人工智能公司机房",
+      "time_of_day": "深夜",
+      "situation": "林峰锁定下一步调查方向。"
+    },
+    "ending_hook": "新的调查方向指向谁。",
+    "continuity_obligations": []
+  },
+  "memory_evidence": [
+    {
+      "memory_path": "new_facts.0",
+      "scene_number": 1,
+      "evidence_text": "我现在就查这个名字"
+    }
+  ],
+  "continuity_resolutions": [
+    {
+      "obligation_id": "episode_1_ending_state",
+      "status": "resolved",
+      "scene_number": 1,
+      "evidence_text": "屏幕上的名字还在闪烁"
+    }
+  ]
+}
+```
+
+上例只展示新增字段关系；真实 `memory_evidence` 会同时覆盖 `summary`、`ending_state`、`ending_hook` 等全部必需路径。
 
 常见错误：
 

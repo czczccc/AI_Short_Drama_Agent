@@ -19,13 +19,17 @@ Writer Agent 同样只依赖 `LLMProvider`，不直接导入或创建 DeepSeek �
 
 Writer 输出通过基础 Schema 但未通过上下文二次校验时，会先记录 `workflow.writer.context_retrying` 并把 `duration_mismatch`、`episode_number_mismatch`、`unknown_character_id` 等安全原因反馈给模型，最多重新生成一次完整剧本。第二次仍失败时记录 `workflow.writer.validation_failed` 并返回 502；日志只包含原因码和数值元数据，不记录剧本正文。
 
-Story Memory v2 在 Showrunner QC 通过时使用同一次 QC 调用输出的 `approved_memory`，不增加额外模型调用。该快照只从实际场景提取事实、人物认知、道具状态和末场状态，并标记 `source=qc_approved`。未开启 QC 或旧项目懒回填时继续使用规则型保守摘要并标记 `source=rule_extracted`。重生成第 N 集会重建第 N 集 memory，并丢弃第 N 集之后的旧 memory。
+Story Memory v2 在 Showrunner QC 通过时使用同一次 QC 调用输出的 `approved_memory`，不增加额外模型调用。该快照只从实际场景提取事实、人物认知、道具状态和末场状态，并标记 `source=qc_approved`。Phase S3-6 要求同一报告输出 `memory_evidence`，后端逐条验证记忆路径、场号和场景原文；第 1–9 集未解决问题还必须形成下一集到期的 `continuity_obligations`。未开启 QC 或旧项目懒回填时继续使用规则型保守摘要并标记 `source=rule_extracted`。重生成第 N 集会重建第 N 集 memory，并丢弃第 N 集之后的旧 memory。
 
-LLM QC 仍只依赖 `LLMProvider.generate_structured(system_prompt, user_prompt, output_schema)`。QC 输入包含规则型问题、有限大纲上下文、角色设定、当前剧本、相邻分集边界、Story Memory 和可选 Writer Brief；输出必须通过 `QCReport` Schema 校验。`status=pass` 时必须同时输出 `approved_memory`。开发辅助 QC 只返回报告，不自动改写或持久化；正式 Showrunner 门禁可以按 `max_revision_attempts` 将问题反馈给 Writer 有限返修，多轮反馈会按问题码和消息累积去重。
+LLM QC 仍只依赖 `LLMProvider.generate_structured(system_prompt, user_prompt, output_schema)`。QC 输入包含规则型问题、有限大纲上下文、角色设定、当前剧本、相邻分集边界、Story Memory 和可选 Writer Brief；输出必须通过 `QCReport` Schema 校验。`status=pass` 时必须同时输出 `approved_memory`、`memory_evidence` 和合同逐条处理结果 `continuity_resolutions`。Schema 通过后还有一次确定性上下文校验；失败时 QC Agent最多重答一次。开发辅助 QC 只返回报告，不自动改写或持久化；正式 Showrunner 门禁可以按 `max_revision_attempts` 将问题反馈给 Writer 有限返修，多轮反馈会按问题码和消息累积去重。
+
+Phase S3-6.2 在每次 QC 输入中加入服务端生成的 `evidence_catalog` 和 `ending_state_reference`。清单只包含当前剧本场景中的 `action`、`dialogues.line`、`dialogues.action_note` 和 `transition` 原文及对应场号；不包含 `scene_goal` 或剧本顶部声明。模型必须为 `memory_evidence` 和 `continuity_resolutions` 完整复制清单中的同一条记录，并从最后一场引用中原样复制正式记忆的地点和时间。后端会丢弃不对应任何正式记忆路径的辅助证据项，并合并字段完全相同的重复证据；路径相同但内容冲突的重复项仍会失败。确定性校验不做模糊匹配或事实补写。
+
+为兼容真实模型在跨集合同结果中的有限字段漂移，`ContinuityResolution` Schema 边界只归一化已观察到的状态别名 `resolved`、`carried_to_next_episode`、`carries_forward` 和证据别名 `resolution_evidence`、`evidence`，并丢弃已观察到但不参与正式数据的辅助字段 `kind`、`resolution_notes`，随后统一输出标准的 `status` 与 `evidence_text`。该兼容层不推断场号或证据内容；冲突值、缺失必填字段和其他未知额外字段仍会触发原有结构修复或 `502`。
 
 Showrunner Agent 只依赖同一 `LLMProvider`。生成 Showrunner State 时，输入精简后的 `StoryOutline`、`CharacterBibleCollection`、`source_outline_hash` 和 `source_characters_hash`，输出必须通过 `ShowrunnerState` Schema 校验后保存到 `Project.showrunner_json`。输入会删除大纲中与角色圣经重复的角色概念，并从角色圣经移除无关视觉细节，只保留剧情连续性和标志道具所需字段。Character Arc 使用稀疏关键转折：Prompt 要求每个角色通常只生成 2–4 个真正发生变化的 `episode_beats`；Schema 允许稀疏列表并继续兼容旧的 10 集完整 beat。哈希仍基于完整已保存数据，由业务层使用 `json.dumps(..., sort_keys=True, separators=(",", ":"))` 的稳定 JSON 内容计算 SHA-256，不使用 Python 内置 `hash()`。
 
-生成 Writer Brief 时，Showrunner Agent 输入已保存的 `ShowrunnerState`、指定 `episode_number`、目标时长和当前 `StoryMemory`，输出必须通过 `WriterBrief` Schema 校验后保存到 `showrunner_json.writer_briefs[episode_number]`。若当前集没有专属 Character Arc beat，输入会同时提供此前最近转折和下一次未来转折，后者只能作为边界而不能当作已发生事实。服务层会校验模型返回的 `episode_number` 和 `target_duration_seconds` 必须与请求一致。Phase 3.3 已将已保存 Brief 作为可选输入接入 Writer；Phase 3.4 已实现 draft + QC 门禁；Phase S3-5 已实现最多两次的显式自动返修。
+生成 Writer Brief 时，Showrunner Agent 输入已保存的 `ShowrunnerState`、指定 `episode_number`、目标时长和当前 `StoryMemory`，输出必须通过 `WriterBrief` Schema 校验后保存到 `showrunner_json.writer_briefs[episode_number]`。若当前集没有专属 Character Arc beat，输入会同时提供此前最近转折和下一次未来转折，后者只能作为边界而不能当作已发生事实。服务层会校验模型返回的 `episode_number` 和 `target_duration_seconds` 必须与请求一致，并覆盖模型字段，根据上一集正式记忆注入 `continuity_contract`。Phase 3.3 已将已保存 Brief 作为可选输入接入 Writer；Phase 3.4 已实现 draft + QC 门禁；Phase S3-5 已实现最多两次的显式自动返修；Phase S3-6 已实现证据门禁和跨集合同。
 
 Character Agent 只依赖同一 `LLMProvider`，输入完整大纲、原始角色概念、世界观、核心冲突和十集大纲，一次输出全部 `CharacterBible`。模型输出必须经过角色 ID 集合、身份字段和关系引用的上下文二次校验。首次上下文校验失败时，Agent 会把缺失/多余角色 ID 或身份冲突字段等安全原因反馈给模型，并最多重新生成一次完整角色圣经；第二次仍失败才返回 502。Writer 在 `characters_json` 存在时优先使用角色圣经，否则回退到原始角色概念。
 

@@ -89,6 +89,12 @@
 - `relationship_changes` 必须是中文字符串数组，例如 `["林峰开始信任苏妍。"]`，不得输出对象数组。
 - `continuity_obligations.N.kind` 只能是 `ending_state`、`active_crisis`、`promise` 或 `prop_or_evidence`。
 - `continuity_resolutions` 的每项必须且只能包含 `obligation_id`、`status`、`scene_number` 和 `evidence_text`；`status` 只能是 `resolved` 或 `carried_forward`，不得改用布尔字段或自定义字段。
+- `continuity_resolutions.N.status=carried_forward` 时（仅限第 1–9 集，第 10 集不得使用 `carried_forward`），必须同时满足：
+  - 同一 `obligation_id` 必须出现在本集 `approved_memory.continuity_obligations` 中，不得只标记延续却不写回义务。
+  - 该义务的 `source_episode_number` 必须为当前集号，`due_episode_number` 必须为下一集号。
+  - `source_memory_path` 必须指向本集 `approved_memory` 中真实存在且由场景支持的路径（例如 `unresolved_questions.N`、`props_and_evidence.N`、`ending_state`），不得沿用上一集记忆的路径。
+  - 对应的 `continuity_obligations.N` 必须在本集 `memory_evidence` 中有一条证据，且必须完整复制同一条 `evidence_catalog` 记录中的 `scene_number` 和 `evidence_text`，不得概括或改写。
+- `continuity_resolutions.N.status=resolved` 的事项不得再次写入本集 `approved_memory.continuity_obligations`。
 - 每个 `memory_path` 恰好出现一次，不得引用不存在的路径。
 - `character_updates.current_goal` 没有明确目标时必须输出 `null`，不得输出空字符串。
 - `knows` 必须始终输出中文字符串数组（字段路径为 `character_updates.<character_id>.knows`）；只有一条也要使用数组，没有可靠认知变化时输出 `[]`，不得输出字符串、对象或 `null`。
@@ -203,6 +209,46 @@
     "status": "resolved",
     "scene_number": 1,
     "evidence_text": "屏幕上的名字仍在闪烁"
+  }
+]
+```
+
+`carried_forward` 的最小完整示例（第 1–9 集）：决议标记延续时，同一 `obligation_id` 必须同时写回本集 `approved_memory.continuity_obligations`，义务的 `source_episode_number` 为当前集、`due_episode_number` 为下一集，`source_memory_path` 指向本集正式记忆中的真实路径，并为本集义务提供逐字复制的 `memory_evidence`：
+
+```json
+"approved_memory": {
+  "episode_number": 2,
+  "source": "qc_approved",
+  "unresolved_questions": ["日志中的异常名字为何出现。"],
+  "continuity_obligations": [
+    {
+      "obligation_id": "e1_trace_log_name",
+      "kind": "active_crisis",
+      "description": "追查日志中的异常名字。",
+      "source_episode_number": 2,
+      "due_episode_number": 3,
+      "source_memory_path": "unresolved_questions.0"
+    }
+  ]
+},
+"memory_evidence": [
+  {
+    "memory_path": "unresolved_questions.0",
+    "scene_number": 2,
+    "evidence_text": "屏幕上跳出苏妍父亲的名字"
+  },
+  {
+    "memory_path": "continuity_obligations.0",
+    "scene_number": 2,
+    "evidence_text": "屏幕上跳出苏妍父亲的名字"
+  }
+],
+"continuity_resolutions": [
+  {
+    "obligation_id": "e1_trace_log_name",
+    "status": "carried_forward",
+    "scene_number": 2,
+    "evidence_text": "屏幕上跳出苏妍父亲的名字"
   }
 ]
 ```

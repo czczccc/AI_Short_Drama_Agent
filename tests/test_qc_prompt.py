@@ -32,3 +32,41 @@ def test_qc_prompt_requires_exact_evidence_catalog_selection() -> None:
     assert "`knows` 必须始终输出中文字符串数组" in prompt
     assert "`ending_state_reference`：后端确定的最后一场地点和时间" in prompt
     assert "必须原样复制 `ending_state_reference.location`" in prompt
+
+
+def test_qc_prompt_defines_carried_forward_writeback_contract() -> None:
+    prompt = Path("app/prompts/qc_v1.md").read_text(encoding="utf-8")
+
+    assert "status=carried_forward" in prompt
+    assert "第 10 集不得使用 `carried_forward`" in prompt
+    assert "必须出现在本集 `approved_memory.continuity_obligations` 中" in prompt
+    assert "`source_episode_number` 必须为当前集号" in prompt
+    assert "`due_episode_number` 必须为下一集号" in prompt
+    assert "不得沿用上一集记忆的路径" in prompt
+    assert "resolved` 的事项不得再次写入本集" in prompt
+
+
+def test_qc_prompt_contains_non_empty_carried_forward_json_example() -> None:
+    prompt = Path("app/prompts/qc_v1.md").read_text(encoding="utf-8")
+
+    assert '"status": "carried_forward"' in prompt
+    assert '"obligation_id": "e1_trace_log_name"' in prompt
+    assert '"source_episode_number": 2' in prompt
+    assert '"due_episode_number": 3' in prompt
+    assert '"source_memory_path": "unresolved_questions.0"' in prompt
+    assert '"memory_path": "continuity_obligations.0"' in prompt
+    assert '"evidence_text": "屏幕上跳出苏妍父亲的名字"' in prompt
+
+
+def test_qc_prompt_carried_forward_example_source_path_is_internal() -> None:
+    prompt = Path("app/prompts/qc_v1.md").read_text(encoding="utf-8")
+
+    example = prompt.split("`carried_forward` 的最小完整示例")[-1]
+    # 来源路径 unresolved_questions.0 必须真实存在于示例 approved_memory 内
+    assert '"unresolved_questions": ["日志中的异常名字为何出现。"]' in example
+    # memory_evidence 必须同时包含来源路径与义务路径两条本集证据
+    assert '"memory_path": "unresolved_questions.0"' in example
+    assert '"memory_path": "continuity_obligations.0"' in example
+    # 两条证据 + 决议的场号与原文必须逐字一致（同一 evidence_catalog 记录）
+    assert example.count('"evidence_text": "屏幕上跳出苏妍父亲的名字"') == 3
+    assert example.count('"scene_number": 2') == 3

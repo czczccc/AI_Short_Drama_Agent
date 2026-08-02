@@ -145,6 +145,57 @@ def test_complete_missing_continuity_obligations_reuses_unresolved_question_evid
     assert new_evidence.evidence_text == unresolved_evidence.evidence_text
 
 
+def test_complete_missing_continuity_obligations_preserves_existing_obligations_and_is_idempotent() -> None:
+    data = valid_qc_pass_report_data(episode_number=1)
+    report = QCReport.model_validate(data)
+    original_obligation = data["approved_memory"]["continuity_obligations"][0]
+    original_evidence = next(
+        evidence
+        for evidence in report.memory_evidence
+        if evidence.memory_path == "continuity_obligations.0"
+    )
+
+    normalized = complete_missing_continuity_obligations(report)
+
+    assert normalized is not report
+    assert normalized.approved_memory is not None
+    assert len(normalized.approved_memory.continuity_obligations) == 1
+    obligation = normalized.approved_memory.continuity_obligations[0]
+    assert obligation.obligation_id == original_obligation["obligation_id"]
+    assert obligation.kind == original_obligation["kind"]
+    assert obligation.description == original_obligation["description"]
+    assert (
+        obligation.source_memory_path
+        == original_obligation["source_memory_path"]
+    )
+    assert len(normalized.memory_evidence) == len(report.memory_evidence)
+    assert next(
+        evidence
+        for evidence in normalized.memory_evidence
+        if evidence.memory_path == "continuity_obligations.0"
+    ).model_dump(mode="json") == original_evidence.model_dump(mode="json")
+
+    again = complete_missing_continuity_obligations(normalized)
+    assert again.model_dump(mode="json") == normalized.model_dump(mode="json")
+
+
+def test_complete_missing_continuity_obligations_skips_episode_10() -> None:
+    data = valid_qc_pass_report_data(episode_number=10)
+    assert data["approved_memory"]["continuity_obligations"] == []
+    report = QCReport.model_validate(data)
+    assert report.approved_memory is not None
+    assert len(report.approved_memory.unresolved_questions) >= 1
+
+    normalized = complete_missing_continuity_obligations(report)
+
+    assert normalized.approved_memory is not None
+    assert normalized.approved_memory.continuity_obligations == []
+    assert not any(
+        evidence.memory_path.startswith("continuity_obligations.")
+        for evidence in normalized.memory_evidence
+    )
+
+
 def test_surplus_memory_evidence_normalization_only_removes_safe_extras() -> None:
     report = _grounded_pass_report()
     original = report.memory_evidence[0]

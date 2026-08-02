@@ -30,6 +30,41 @@ PROMPT_PATH = Path(__file__).resolve().parents[1] / "prompts" / "qc_v1.md"
 logger = logging.getLogger(__name__)
 
 
+def _build_correction_instructions(issues: list[dict]) -> list[str]:
+    """把 grounding 校验失败的安全 issues 转换为明确、可执行的修正指令。
+
+    只使用 validator 已提供的安全 ID 与路径；不猜测场号、证据原文或剧情事实。
+    """
+    instructions: list[str] = []
+    for issue in issues:
+        issue_type = issue.get("type")
+        if issue_type == "carried_forward_obligation_not_saved":
+            obligation_id = issue.get("obligation_id")
+            instructions.append(
+                f"义务 {obligation_id} 被标记为 carried_forward 但未写回本集 "
+                "approved_memory.continuity_obligations。必须把同一 obligation_id 写入本集 "
+                "continuity_obligations，source_episode_number 为当前集号、due_episode_number 为下一集号，"
+                "source_memory_path 使用本集 approved_memory 中真实存在的路径，"
+                "并为该义务提供一条本集 memory_evidence（从 evidence_catalog 逐字复制）。"
+            )
+        elif issue_type == "missing_memory_evidence":
+            paths = issue.get("memory_paths") or []
+            paths_text = "、".join(str(path) for path in paths)
+            instructions.append(
+                f"以下 memory_path 缺少 memory_evidence：{paths_text}。"
+                "必须逐条从 evidence_catalog 复制同一条记录的 scene_number 和 evidence_text 补全证据。"
+            )
+        elif issue_type == "invalid_continuity_obligation_source":
+            obligation_id = issue.get("obligation_id")
+            instructions.append(
+                f"义务 {obligation_id} 的 source_memory_path 无效。"
+                "必须改为本集 approved_memory 中真实存在且由场景支持的路径"
+                "（例如 unresolved_questions.N、props_and_evidence.N、ending_state），"
+                "不得沿用上一集记忆的路径。"
+            )
+    return instructions
+
+
 class QCAgent:
     def __init__(self, llm_provider: LLMProvider) -> None:
         self._llm_provider = llm_provider
@@ -149,6 +184,13 @@ class QCAgent:
                             "context_issues:",
                             json.dumps(
                                 issues,
+                                ensure_ascii=False,
+                                sort_keys=True,
+                                separators=(",", ":"),
+                            ),
+                            "correction_instructions:",
+                            json.dumps(
+                                _build_correction_instructions(issues),
                                 ensure_ascii=False,
                                 sort_keys=True,
                                 separators=(",", ":"),

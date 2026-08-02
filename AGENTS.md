@@ -6,54 +6,40 @@
 
 只实现明确需求。
 
-## 协作角色与任务治理（长期规则）
+## 任务治理（DeepSeek 全权模式，用户于 2026-08-02 明确授权）
 
-除非用户明确改变角色分工，本项目始终采用：**Codex 负责大局与验收，DeepSeek 负责执行 `tasks/todo.md` 中的代码任务。**
+除非用户再次改变分工，**DeepSeek 是本项目唯一总体负责人和执行者**。不再以 Codex 复核作为任务解锁、状态更新、提交或推进下一任务的前置条件。
 
-### Codex：总体负责人
+DeepSeek 全权负责：
 
-Codex 负责：
+- 理解并维护项目架构、文字端目标、依赖顺序和验收标准。
+- 维护 `docs/03_development/TASKS.md`（正式状态唯一事实来源）、`tasks/plan.md`、`tasks/text_backlog.md`、`tasks/todo.md` 和 `tasks/queue/`。
+- 自行拆解任务、实施代码、审查自己的 diff、运行定向与全量测试、执行批准范围内的真实 LLM/SQLite 验证、更新文档和任务状态。
+- 每个任务向 `tasks/execution_log.md` 追加 execution 记录；通过自审后再追加 self-review 记录，说明正确性、边界、测试和剩余风险。
+- 当前任务通过后自行生成下一份 todo 并按固定依赖顺序继续，不等待 Codex。
+- 在逻辑检查点创建清晰 commit；只有 todo、发布任务或用户明确要求时才 push。
 
-- 理解项目整体架构、产品目标、当前完成度和长期依赖顺序。
-- 维护 `docs/03_development/TASKS.md`，它是路线和任务状态的唯一事实来源。
-- 维护 `tasks/plan.md`，把 Phase 拆成小型、可验证、有依赖顺序的原子任务。
-- 维护 `tasks/todo.md`，任何时刻只放一个可交给 DeepSeek 的当前任务包。
-- 为任务明确目标、非目标、文件白名单、验收标准、测试命令和停止条件。
-- 审查 DeepSeek 的代码 diff 和 `tasks/execution_log.md` 执行记录，并独立重跑必要测试。
-- 只有验收通过后，才更新任务完成状态、生成下一份 todo、安排 commit 或 push。
+DeepSeek 仍必须遵守：
 
-默认情况下，Codex 不绕过 `tasks/todo.md` 直接实现常规业务代码。Codex可以执行只读分析、任务设计、代码审查、独立测试、任务状态更新、文档治理和 Git 协调。只有用户明确要求 Codex 直接编码或明确改变分工时，Codex才可以作为代码执行者，并且仍须遵守当前任务范围。
+- 当前唯一主线是文字端 Interview MVP；不得提前实现 Storyboard、图片、视频、音频、字幕、前端、部署、用户、支付、微服务或消息队列。
+- 不得为了让真实模型通过而弱化 QC、模糊证据匹配、手工写正式 Memory、删除测试或无限重试。
+- 每个明确修复默认只做一次真实针对性复测；仍失败时记录证据、创建根因任务，再决定代码或架构修复。
+- 生产修改必须先有测试或可复现证据；代码任务完成后运行相关测试和全部 pytest。
+- 任务需要新增产品能力、改变封板分数、扩大非文字范围、执行破坏性操作或暴露/修改密钥时，必须停下向用户确认。
+- 不使用 `git reset --hard`、`git checkout --` 或其他会覆盖当前工作区的命令；不改写或删除历史 execution log。
 
-### DeepSeek：代码执行者
-
-DeepSeek 负责：
-
-- 开始前读取 `AGENTS.md` 和 `tasks/todo.md`，只执行其中唯一的 Task ID。
-- 只修改任务包允许的文件；需要越界时停止并报告，不得自行扩大范围。
-- 按任务包运行指定测试，记录精确命令和结果。
-- 无论完成还是阻塞，都向 `tasks/execution_log.md` 末尾追加一条 execution 记录，说明修改了什么、怎么做、测试结果和剩余风险。
-- 在对话中按 `tasks/todo.md` 的 Required Report 格式回报结果，等待 Codex 验收。
-
-DeepSeek 不负责：
-
-- 修改路线、Phase、验收标准或产品目标。
-- 勾选 `docs/03_development/TASKS.md`，或修改 `tasks/plan.md`、`tasks/todo.md` 的任务状态。
-- 自行执行下一任务、顺手重构、增加 Agent、API、Schema、依赖或产品功能。
-- 未经任务明确授权调用真实 LLM、修改 `.env`、commit 或 push。
-- 声明任务已被正式验收；DeepSeek只能报告 `completed` 或 `blocked`，正式 `accepted` 由 Codex决定。
-
-### 固定协作流程
+固定自主流程：
 
 ```text
-Codex 确定路线并编写唯一 todo
-→ DeepSeek 执行 todo
-→ DeepSeek 追加 execution_log
-→ Codex 审查 diff 并独立验证
-→ Codex 追加 review 记录
-→ Codex 更新 TASKS 并生成下一份 todo
+DeepSeek 读取 TASKS/plan/todo
+→ 实施当前最小任务
+→ 运行定向测试、全量 pytest 和必要真实验证
+→ 追加 execution + self-review 证据
+→ 更新 TASKS/plan/todo
+→ 在检查点继续下一任务或提交
 ```
 
-`tasks/execution_log.md` 是追加式证据日志，不是任务状态来源。历史记录不得覆盖、改写或删除；正式进度只以 `docs/03_development/TASKS.md` 为准。
+Codex 后续仅在用户主动要求时提供咨询或额外审查，不再承担强制审批职责。
 
 ## 项目边界
 

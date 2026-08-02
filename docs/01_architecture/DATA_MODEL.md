@@ -23,6 +23,8 @@ Story Memory v2 保存到 `memory_json`，顶层包含 `version=story_memory_v2`
 
 Phase S3-6 在每集记忆中增加可选 `continuity_obligations`。每项包含稳定 ID、类型、说明、来源集、到期集和来源记忆路径。旧 `memory_json` 没有该字段时按空数组读取，不需要 SQLite 字段迁移。
 
+Phase S3-6.3 起，后端在 QC 报告 `status=pass` 且集号小于 10 时确定性补全缺失义务：对没有义务来源的 `unresolved_questions.N`，按精确 `source_memory_path` 补一条义务并逐字复用其证据（场号和原文）；已有义务原样保留、同来源不重复、重复调用幂等。第 10 集不生成下一集义务。该行为是纯后端逻辑，不新增 LLM 调用，也不改变 API 请求/响应结构。
+
 人物没有明确当前目标时，`character_updates.current_goal` 保存为 `null`；LLM 偶发返回的空白字符串会在 Schema 边界规范化为 `null`。
 
 生成或重生成第 N 集时，系统会重建第 N 集 memory，并丢弃第 N 集之后的旧 memory，避免后续上下文依赖过期剧本。`ending_hook` 只表示未解决悬念，不能单独证明其中描述的事件已经在场景中发生。

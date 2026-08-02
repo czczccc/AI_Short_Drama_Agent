@@ -33,6 +33,8 @@ SYSTEM_PROMPT = """你是中文竖屏短剧项目的 Showrunner Agent，正在�
 - 兼容旧项目时若 `source=rule_extracted`，不得把 `episode_goal` 或 `ending_hook` 中没有场景证据的声明升级为正式事实。
 - props_and_evidence 写本集允许出现或承接的道具、证据、线索。
 - ending_requirement 写本集结尾钩子的边界：可以制造悬念，但不得提前解答下一集。
+- 一致性自检：当 `allowed_scope`、`required_beats` 或 `ending_requirement` 需要某个角色"暗示自己掌握信息或可能提供帮助"时，该暗示只能停留在"存在未言明的办法或帮助"层面，不得落到 `forbidden_content` 明确禁止的具体事实（例如保留备份、参与方式、证据细节、身份或关系）。禁止输出互相冲突的指令：不能让同一角色既被要求暗示某信息，又被 `forbidden_content` 禁止该信息。
+- 一致性自检 2：`forbidden_content` 不得禁止承接上一集正式 Story Memory（`source=qc_approved`）或 `continuity_contract` 中真实存在的义务、末场状态与未解决问题；上一集已发生的事实和必须承接的坑不得被列入本集禁止内容。`required_beats` 必须为这些承接义务留出可执行的节拍空间，否则 Brief 会给出 Writer 无法同时满足的冲突指令。
 
 JSON 结构：
 {

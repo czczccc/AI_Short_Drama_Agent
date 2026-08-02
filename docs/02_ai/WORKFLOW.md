@@ -56,6 +56,8 @@ Phase S3-6.1 修复真实模型在非空 `continuity_resolutions` 上的字段�
 
 Phase S3-6.2 为 QC 提供由当前 draft 确定性生成的场景证据清单和最后一场地点时间引用。模型不再自由改写证据文字，只能完整复制清单中的场号和原文到 `memory_evidence` 与 `continuity_resolutions`，并原样复制最后一场的地点和时间到 `ending_state`。进入门禁前仅清理不对应正式记忆的辅助证据和完全相同的重复项；清单和最终校验使用同一组可引用场景字段，仍拒绝不存在的必需证据、相互冲突的重复项、缺失义务和错误关系结构。该阶段不改变 API、数据库或 Story Memory 保存原则。
 
+Phase S3-6.3 由后端确定性补全缺失的连续性义务：当 QC 报告 `status=pass` 且集号小于 10 时，若某个 `unresolved_questions.N` 没有对应的 `continuity_obligations` 来源，后端按精确 `source_memory_path` 补一条义务（`source_episode_number` 为当前集、`due_episode_number` 为当前集加 1），并逐字复用该问题的 `memory_evidence`（场号和场景原文）生成 `continuity_obligations.{index}` 的证据条目；已有合法义务原样保留，同一来源路径不重复追加，重复调用结果幂等。第 10 集不生成下一集义务或义务证据。该过程是纯确定性后端逻辑，不新增 LLM 调用、不改变任何 API 请求或响应结构，也不改变“QC 通过前不写入正式 Story Memory”的保存原则。
+
 Showrunner 门禁流程原则：Writer 生成的剧本在 `run_showrunner_qc=true` 时先作为 draft 接受规则型 QC 和 Showrunner QC；只有 QC 通过后，才能保存为正式剧本并更新正式 Story Memory。QC 不通过时，草稿事实不得写入 `memory_json`。
 
 LLM QC v1 是剧本生成后的人工确认辅助步骤：对已保存的第 N 集剧本读取 Story Outline、Character Bible、Story Memory 和当前剧本，调用 QC Agent 生成结构化质检报告。v1 只返回问题清单、严重级别和修改建议，不自动改写剧本、不覆盖已保存剧本。确认 QC 报告后，再由人工决定是否重生成或手动编辑剧本。

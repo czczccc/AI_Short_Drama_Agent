@@ -341,6 +341,8 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/1/characters"
 
 调用 LLM QC 前，后端会从当前 draft 的场景动作、对白、动作提示和转场生成内部 `evidence_catalog`，并从最后一场生成 `ending_state_reference`。这些字段只作为模型输入，不改变本接口请求或响应结构。QC 的记忆证据和合同处理证据必须完整复制清单中的场号和原文，正式记忆的最后地点和时间必须复制权威引用。后端会移除不对应正式记忆路径的辅助证据以及完全相同的重复证据，但仍拒绝缺失或冲突的必需证据，并继续逐字校验，不进行模糊匹配。
 
+QC 报告通过后（`status=pass` 且集号小于 10），后端还会确定性补全缺失的连续性义务：若某个 `unresolved_questions.N` 没有对应义务，后端按精确 `source_memory_path` 补一条义务（到期集为当前集加 1），并逐字复用该问题的 `memory_evidence`（场号和场景原文）生成 `continuity_obligations.{index}` 证据；已有合法义务原样保留、同一来源不重复、重复调用幂等。第 10 集不生成下一集义务或义务证据。该过程不新增 LLM 调用、不改变本接口的请求或响应结构，QC 未通过前仍不写入正式 Story Memory。
+
 模型在 `continuity_resolutions` 中使用已知的状态或证据字段别名时，后端会在 Schema 边界归一化；已知但不参与正式结果的 `kind`、`resolution_notes` 会被移除，接口始终以标准的 `obligation_id`、`status`、`scene_number`、`evidence_text` 响应和保存。后端不会推断缺失的场号或证据；别名互相冲突、字段缺失、其他未知额外字段或错误嵌套类型仍按结构响应无效处理。
 
 `max_revision_attempts` 默认为 `0`，范围为 `0–2`，只有 `run_showrunner_qc=true` 时可用。大于 `0` 时，系统把 QC 问题作为 `revision_feedback` 交给 Writer 重新生成，直到通过或达到上限。多次返修会累积并去重此前全部问题，避免修复新问题时重新引入旧错误。被拒绝的 draft 不保存正文；每次尝试只在结构化日志中记录尝试序号、状态和安全问题码。Showrunner State 只保存该集最近一次 QC 报告。

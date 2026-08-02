@@ -1,16 +1,21 @@
+import copy
 import json
 
 from fastapi.testclient import TestClient
 
+from app.agents.qc import QCAgent
 from app.agents.showrunner import ShowrunnerAgent
 from app.api.main import app
 from app.models.project import Project
 from app.providers.llm.base import LLMCallError
 from app.providers.llm.factory import get_configured_llm_provider
+from app.prompts.showrunner.brief_v1 import SYSTEM_PROMPT as BRIEF_SYSTEM_PROMPT
 from app.schemas.character import CharacterBibleCollection
 from app.schemas.memory import EpisodeMemory, StoryMemory
-from app.schemas.outline import StoryOutline
-from app.schemas.showrunner import ShowrunnerState
+from app.schemas.outline import EpisodeOutline, StoryOutline
+from app.schemas.qc import QCReport
+from app.schemas.script import EpisodeScript
+from app.schemas.showrunner import ShowrunnerState, WriterBrief
 from app.services.showrunner_service import stable_json_sha256
 from tests.fakes import (
     FakeLLMProvider,
@@ -18,7 +23,9 @@ from tests.fakes import (
     valid_character_bibles_data,
     valid_outline_data,
     valid_qc_pass_report_data,
+    valid_script_data,
     valid_showrunner_state_data,
+    valid_writer_brief_data,
 )
 from tests.test_characters import create_outline_ready_project, generate_characters
 
@@ -55,6 +62,21 @@ def test_stable_json_sha256_ignores_dict_key_order() -> None:
     right = {"a": {"x": 1, "y": "是"}, "b": [2, 1]}
 
     assert stable_json_sha256(left) == stable_json_sha256(right)
+
+
+def test_brief_prompt_requires_scope_hint_consistency_with_forbidden_content() -> None:
+    assert "一致性自检" in BRIEF_SYSTEM_PROMPT
+    assert "allowed_scope" in BRIEF_SYSTEM_PROMPT
+    assert "forbidden_content" in BRIEF_SYSTEM_PROMPT
+    assert "不得落到" in BRIEF_SYSTEM_PROMPT
+    assert "互相冲突的指令" in BRIEF_SYSTEM_PROMPT
+
+
+def test_brief_prompt_forbids_banning_contract_obligations() -> None:
+    assert "一致性自检 2" in BRIEF_SYSTEM_PROMPT
+    assert "不得禁止承接上一集正式 Story Memory" in BRIEF_SYSTEM_PROMPT
+    assert "continuity_contract" in BRIEF_SYSTEM_PROMPT
+    assert "必须为这些承接义务留出可执行的节拍空间" in BRIEF_SYSTEM_PROMPT
 
 
 def test_generate_showrunner_state_validates_and_persists(
@@ -333,3 +355,145 @@ def test_generate_writer_brief_rejects_episode_mismatch(client: TestClient) -> N
     response = generate_writer_brief(client, project_id, episode_number=1, provider=provider)
 
     assert response.status_code == 502
+
+
+class _RecordingQCRetryProvider(FakeLLMProvider):
+    """第一次返回 grounding 失败的坏报告，第二次返回好报告；记录全部 user prompt。"""
+
+    def __init__(self, bad_report: QCReport, good_report: QCReport):
+        super().__init__()
+        self._bad_report = bad_report
+        self._good_report = good_report
+        self.user_prompts: list[str] = []
+        self.calls = 0
+
+    def generate_structured(self, system_prompt, user_prompt, output_schema):
+        self.user_prompts.append(user_prompt)
+        self.calls += 1
+        if output_schema is QCReport:
+            return self._good_report if self.calls > 1 else self._bad_report
+        return super().generate_structured(system_prompt, user_prompt, output_schema)
+
+
+def test_qc_agent_retry_prompt_contains_targeted_correction_instructions() -> None:
+    outline = StoryOutline.model_validate(valid_outline_data())
+    episode_outline = next(
+        episode
+        for episode in outline.episodes
+        if episode.episode_number == 4
+    )
+    script = EpisodeScript.model_validate(valid_script_data(episode_number=4))
+    brief_data = valid_writer_brief_data(episode_number=4)
+    brief_data["continuity_contract"] = {
+        "previous_episode_number": 3,
+        "previous_ending_state": {
+            "location": "机房内部",
+            "time_of_day": "深夜",
+            "situation": "许明触发警报后离开机房。",
+        },
+        "must_continue": [
+            {
+                "obligation_id": "e3_fang_lin_motive",
+                "kind": "active_crisis",
+                "description": "继续追查方琳的真实动机。",
+                "source_episode_number": 3,
+                "due_episode_number": 4,
+                "source_memory_path": "unresolved_questions.0",
+            }
+        ],
+    }
+    brief = WriterBrief.model_validate(brief_data)
+
+    bad = valid_qc_pass_report_data(episode_number=4)
+    bad["approved_memory"]["character_updates"]["fang_lin"] = {
+        "appears": True,
+        "knows": ["知道一", "知道二", "知道三", "知道四"],
+        "current_goal": "掩饰自己的参与。",
+        "relationship_changes": [],
+    }
+    bad["approved_memory"]["continuity_obligations"] = [
+        {
+            "obligation_id": "e4_bad_source",
+            "kind": "active_crisis",
+            "description": "来源路径无效的义务。",
+            "source_episode_number": 4,
+            "due_episode_number": 5,
+            "source_memory_path": "unresolved_questions.9",
+        }
+    ]
+    bad["memory_evidence"] = [
+        {"memory_path": "summary", "scene_number": 3, "evidence_text": "林峰迅速复制关键文件"},
+        {"memory_path": "new_facts.0", "scene_number": 3, "evidence_text": "林峰迅速复制关键文件"},
+        {"memory_path": "unresolved_questions.0", "scene_number": 3, "evidence_text": "屏幕上出现苏妍父亲的名字"},
+        {"memory_path": "character_updates.lin_feng.knows.0", "scene_number": 3, "evidence_text": "林峰迅速复制关键文件"},
+        {"memory_path": "character_updates.lin_feng.current_goal", "scene_number": 3, "evidence_text": "屏幕上出现苏妍父亲的名字"},
+        {"memory_path": "character_updates.fang_lin.knows.0", "scene_number": 3, "evidence_text": "屏幕上出现苏妍父亲的名字"},
+        {"memory_path": "character_updates.fang_lin.knows.1", "scene_number": 3, "evidence_text": "屏幕上出现苏妍父亲的名字"},
+        {"memory_path": "character_updates.fang_lin.knows.2", "scene_number": 3, "evidence_text": "屏幕上出现苏妍父亲的名字"},
+        {"memory_path": "props_and_evidence.0", "scene_number": 3, "evidence_text": "林峰迅速复制关键文件"},
+        {"memory_path": "ending_state", "scene_number": 3, "evidence_text": "屏幕上出现苏妍父亲的名字"},
+        {"memory_path": "ending_hook", "scene_number": 3, "evidence_text": "屏幕上出现苏妍父亲的名字"},
+        {"memory_path": "continuity_obligations.0", "scene_number": 3, "evidence_text": "屏幕上出现苏妍父亲的名字"},
+    ]
+    bad["continuity_resolutions"] = [
+        {
+            "obligation_id": "e3_fang_lin_motive",
+            "status": "carried_forward",
+            "scene_number": 1,
+            "evidence_text": "电脑突然开始远程自毁",
+        }
+    ]
+    bad_report = QCReport.model_validate(bad)
+
+    good = copy.deepcopy(bad)
+    good["approved_memory"]["continuity_obligations"][0]["source_memory_path"] = (
+        "unresolved_questions.0"
+    )
+    good["approved_memory"]["character_updates"]["fang_lin"]["knows"] = [
+        "知道一",
+        "知道二",
+        "知道三",
+    ]
+    good["approved_memory"]["continuity_obligations"].append(
+        {
+            "obligation_id": "e3_fang_lin_motive",
+            "kind": "active_crisis",
+            "description": "继续追查方琳的真实动机。",
+            "source_episode_number": 4,
+            "due_episode_number": 5,
+            "source_memory_path": "unresolved_questions.0",
+        }
+    )
+    good["memory_evidence"].append(
+        {
+            "memory_path": "continuity_obligations.1",
+            "scene_number": 3,
+            "evidence_text": "屏幕上出现苏妍父亲的名字",
+        }
+    )
+    good["memory_evidence"].append(
+        {
+            "memory_path": "character_updates.fang_lin.current_goal",
+            "scene_number": 3,
+            "evidence_text": "屏幕上出现苏妍父亲的名字",
+        }
+    )
+    good_report = QCReport.model_validate(good)
+
+    provider = _RecordingQCRetryProvider(bad_report, good_report)
+    agent = QCAgent(provider)
+    result = agent.generate_report(
+        story_outline=outline,
+        episode_outline=episode_outline,
+        script=script,
+        writer_brief=brief,
+    )
+
+    assert provider.calls == 2
+    assert result is good_report or result.model_dump(mode="json") == good_report.model_dump(mode="json")
+    second_prompt = provider.user_prompts[1]
+    assert "correction_instructions" in second_prompt
+    assert "e3_fang_lin_motive" in second_prompt
+    assert "character_updates.fang_lin.knows.3" in second_prompt
+    assert "carried_forward" in second_prompt
+    assert "memory_evidence" in second_prompt

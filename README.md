@@ -105,7 +105,7 @@ POST /api/v1/projects/1/episodes/1/script
 }
 ```
 
-完整 API 契约见 [docs/01_architecture/API.md](docs/01_architecture/API.md)。
+完整 API 契约见 [docs/01_architecture/API.md](docs/01_architecture/API.md)；前端开发者建议直接看 [docs/01_architecture/API_FRONTEND_GUIDE.md](docs/01_architecture/API_FRONTEND_GUIDE.md)（按页面组织的精简速查）。
 
 ### 运行测试
 

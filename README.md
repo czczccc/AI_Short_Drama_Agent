@@ -53,7 +53,7 @@ Provider 层 —— 模型适配：DeepSeek（OpenAI 兼容）封装，唯一"�
 
 ```bash
 # 1. 克隆并进入
-git clone <your-repo-url>
+git clone https://github.com/czczccc/AI_Short_Drama_Agent.git
 cd AI_Short_Drama_Agent
 
 # 2. 创建虚拟环境并安装依赖

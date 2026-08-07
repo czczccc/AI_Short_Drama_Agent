@@ -1,211 +1,146 @@
-# AI Short Drama Agent
+# AI Short Drama Agent（AI 短剧智能生成系统）
 
-AI 短剧生产系统：从创意输入到视频成片形成自动化工作流。
+一句话：**你给一句故事创意，系统自动生成一部完整的 10 集短剧剧本** —— 从大纲、角色设定到每一集的逐场对白，并且自带"质检流水线"保证前后剧情自洽、伏笔兑现、人物认知不矛盾。
 
-## 核心原则
+## 核心亮点（面试时值得讲）
 
-- MVP 优先
-- 模块化
-- 模型可替换
-- 数据可追踪
-- Agent 可长期维护
+- **LLM 不可靠 → 工程约束**：AI 写剧本会"飘"（忘了伏笔、人物前后矛盾）。本项目用**确定性证据门禁**（`qc_grounding.py`）逐字核对 AI 质检报告里的每条证据，杜绝"AI 检查 AI"空转。
+- **记忆链控制成本**：每集生成只带上一集的压缩记忆（几百 token），不重读全部历史 —— 做到 20 集也不会越做越贵。
+- **义务到期机制**：跨集"坑"（continuity obligations）有来源链和到期日，欠账超过 2 集强制解决，不会无限累积压垮模型。
+- **教科书式分层**：API → Service → Agent → Provider → 数据库，换模型只改一个文件。
 
-## 技术栈
+## 架构总览
 
-- 后端：Python 3.12 + FastAPI
-- 数据库：SQLite（SQLAlchemy）
-- 配置：pydantic-settings + .env
-- 当前 LLM Provider：DeepSeek V4 Pro（可替换 Provider 设计）
-- 未来计划 LLM Provider：OpenAI
-- （后续 Phase）视频模型：Seedance / 豆包 / Kling / Veo；FFmpeg 合成
+```
+用户（一句话创意）
+    ↓ HTTP
+API 层   —— FastAPI 路由：参数校验、异常→HTTP 状态码
+    ↓
+Service 层 —— 业务编排：合同构造、QC 合并、记忆落库、返修循环
+    ↓
+Agent 层  —— LLM 提示词编排：Director/Character/Showrunner/Writer/QC
+    ↓
+Provider 层 —— 模型适配：DeepSeek（OpenAI 兼容）封装，唯一"打电话给 LLM"的地方
+    ↓
+数据层   —— SQLite 单表 projects（5 个 JSON 列）+ Pydantic 契约强校验
 
-## 目录结构
-
-- `app/api` —— FastAPI 入口与路由
-- `app/configs` —— 配置读取
-- `app/database` —— 数据库连接与基类
-- `app/models` —— SQLAlchemy 模型
-- `app/schemas` —— Pydantic 模型
-- `app/services` —— 业务逻辑
-- `app/providers/llm` —— 通用 LLM Provider 与 DeepSeek 适配器
-- `app/agents` —— Director、Character、Writer、QC 与 Showrunner Agent
-- `app/prompts` —— 版本化 Prompt
-- `app/observability` —— 本地结构化日志与请求链路追踪
-- `data/` —— 本地 SQLite 数据库和数据库备份
-- `logs/` —— 本地运行日志（默认忽略提交）
-- `tests/` —— 测试
-- `docs/` —— 产品与设计文档
-
-## 快速启动（Windows PowerShell）
-
-> 前置条件：本机已安装 Python 3.12（本项目统一使用 Python 3.12）。
-
-1. 创建虚拟环境并安装依赖
-
-   ```powershell
-   python -m venv .venv
-   .\.venv\Scripts\Activate.ps1
-   pip install -r requirements.txt
-   ```
-
-2. 复制环境变量
-
-   ```powershell
-   copy .env.example .env
-   ```
-
-3. 启动服务（首次启动会自动创建 SQLite 数据库 `data/app.db`）
-
-   ```powershell
-   uvicorn app.api.main:app --reload
-   ```
-
-4. 验证
-
-   - API 基础地址： http://127.0.0.1:8000/api/v1
-   - 健康检查： http://127.0.0.1:8000/api/v1/health
-   - 交互式 API 文档： http://127.0.0.1:8000/docs
-   - OpenAPI JSON： http://127.0.0.1:8000/openapi.json
-
-独立前端允许访问的来源由 `.env` 中的 `CORS_ALLOWED_ORIGINS` 配置。开发环境默认示例包含本机 `3000` 和 `5173` 端口；生产环境应替换为实际前端域名，不要使用 `*`。
-
-## 本地日志
-
-服务会为每个 HTTP 请求返回 `X-Request-ID`，并把请求和关键工作流事件写入本地 JSONL 日志，默认路径为 `logs/app.jsonl`。可以在 `.env` 中用 `LOG_FILE_PATH` 覆盖。
-
-查看最近日志：
-
-```powershell
-Invoke-RestMethod -Uri "http://127.0.0.1:8000/dev/logs?limit=50"
+横切：observability/ —— JSONL 结构化日志，request_id 贯穿全链路
 ```
 
-按项目过滤：
+![系统架构图](docs/diagrams/architecture.drawio.png)
 
-```powershell
-Invoke-RestMethod -Uri "http://127.0.0.1:8000/dev/logs?project_id=$($project.id)&limit=50"
+更直观的说明见 [docs/PROJECT_MAP.md](docs/PROJECT_MAP.md)（5 分钟快速地图）与 [docs/04_operation/ARCHITECTURE_AUDIT.md](docs/04_operation/ARCHITECTURE_AUDIT.md)（深度审计）。
+
+## 生成流程（核心）
+
+```
+创意 → 大纲(Director) → 角色圣经(Character) → Showrunner State → 
+逐集循环（10 集）：
+  Writer Brief（本集任务书 + 连续性合同）
+  → Writer 写剧本 → 规则型 QC（纯代码）→ AI QC（LLM 质检）
+  → 证据门禁（逐字核对）→ 不过则带修正指令重写（≤2 次）
+  → 通过则落库 + 生成该集剧情记忆（供下一集参考）
 ```
 
-日志只记录 `event`、`request_id`、`project_id`、`episode_number`、状态码和耗时等元数据，不记录 API Key、完整 Prompt 或完整剧本正文。
+## 快速开始
 
-## Phase 2A：生成 10 集大纲
+### 环境要求
 
-先创建项目：
+- Python 3.12+
+- 一个 DeepSeek API key（[platform.deepseek.com](https://platform.deepseek.com)）
 
-```powershell
-$project = Invoke-RestMethod -Method Post `
-  -Uri "http://127.0.0.1:8000/api/v1/projects" `
-  -ContentType "application/json" `
-  -Body (@{ name = "逆袭程序员" } | ConvertTo-Json)
+### 安装与启动
+
+```bash
+# 1. 克隆并进入
+git clone <your-repo-url>
+cd AI_Short_Drama_Agent
+
+# 2. 创建虚拟环境并安装依赖
+python -m venv .venv
+.venv/Scripts/activate          # Windows
+# source .venv/bin/activate     # macOS / Linux
+pip install -r requirements.txt
+
+# 3. 配置环境变量
+cp .env.example .env
+# 编辑 .env，填入 DEEPSEEK_API_KEY
+
+# 4. 启动服务
+.venv/Scripts/python -m uvicorn app.api.main:app --port 8000
 ```
 
-再生成结构化大纲：
+### 一键生成整季（推荐演示方式）
 
-```powershell
-$body = @{
-  idea = "一个被公司开除的程序员发现老板窃取了他的AI成果"
-  episode_count = 10
-} | ConvertTo-Json
-
-Invoke-RestMethod -Method Post `
-  -Uri "http://127.0.0.1:8000/api/v1/projects/$($project.id)/outline" `
-  -ContentType "application/json" `
-  -Body $body
+```bash
+# 另开一个终端（服务保持运行）
+.venv/Scripts/python tools/generate_season.py \
+  --idea "一个程序员被公司陷害后逆袭创业" \
+  --name "我的第一部短剧"
 ```
 
-## 开发环境数据库重建
+脚本会自动完成：创建项目 → 大纲 → 角色圣经 → Showrunner State → 逐集生成 10 集（含自动重试与失败报告）。全部完成后项目状态为 `script_ready`。
 
-Phase 2A 直接给 `Project` 增加字段，没有引入 Alembic。已有开发库需要在服务停止后重建；如有需要请先自行备份：
+### 手动分步演示
 
-```powershell
-Remove-Item -LiteralPath .\data\app.db
-uvicorn app.api.main:app --reload
+浏览器打开 Swagger UI：<http://127.0.0.1:8000/docs>，按顺序调用：
+
+| 步骤 | 接口 | 说明 |
+|---|---|---|
+| 1 | `POST /api/v1/projects` | 创建项目 |
+| 2 | `POST /api/v1/projects/{id}/outline` | 生成大纲（body 传 `idea`） |
+| 3 | `POST /api/v1/projects/{id}/characters/generate` | 生成角色圣经 |
+| 4 | `POST /api/v1/projects/{id}/showrunner` | 生成总控规划（可选） |
+| 5 | `POST /api/v1/projects/{id}/episodes/{n}/writer-brief` | 生成第 n 集任务书 |
+| 6 | `POST /api/v1/projects/{id}/episodes/{n}/script` | 生成第 n 集剧本（QC 校验+返修） |
+
+请求示例（第 6 步核心接口）：
+
+```json
+POST /api/v1/projects/1/episodes/1/script
+{
+  "use_showrunner_brief": true,
+  "run_showrunner_qc": true,
+  "max_revision_attempts": 2
+}
 ```
 
-应用启动时会重新创建 `data/app.db`。测试始终使用临时 SQLite 数据库，不会写入正式数据库。
+完整 API 契约见 [docs/01_architecture/API.md](docs/01_architecture/API.md)。
 
-Phase 2C 启动时会为已有 SQLite `projects` 表幂等增加 `characters_json` 字段，无需删除已有开发库。
+### 运行测试
 
-Phase 3.1 启动时会为已有 SQLite `projects` 表幂等增加 `showrunner_json` 字段，无需删除已有开发库。Showrunner State 需要在大纲和角色圣经生成后创建：
-
-```powershell
-Invoke-RestMethod -Method Post `
-  -Uri "http://127.0.0.1:8000/api/v1/projects/$($project.id)/showrunner" `
-  -ContentType "application/json" `
-  -Body "{}"
+```bash
+.venv/Scripts/python -m pytest -q
+# 195 passed
 ```
 
-查询已保存的 Showrunner State：
+## 项目结构
 
-```powershell
-Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/$($project.id)/showrunner"
+```
+app/
+├── api/          # FastAPI 路由（projects/outlines/characters/showrunner/scripts/dev）
+├── services/     # 业务编排（script_service 主循环、qc_grounding 证据门禁、memory_service 记忆链…）
+├── agents/       # LLM Agent（director/character/showrunner/writer/qc）
+├── providers/    # LLM 抽象（DeepSeek + factory）；video 占位
+├── schemas/      # Pydantic 契约（LLM 输出强校验）
+├── models/       # ORM（单表 projects）
+├── database/     # SQLite 连接与会话
+├── configs/      # pydantic-settings 配置
+├── observability/ # JSONL 结构化日志
+└── prompts/      # 各 Agent 系统提示词
+tools/
+├── generate_season.py   # 一键整季生成工具
+└── text_eval_runner.py  # 评测驱动器（离线工具）
+docs/              # 架构/API/数据模型/工作流文档
+tests/             # 195 个测试
 ```
 
-当前 Showrunner 已完成 State、Writer Brief、Writer 接入、QC 门禁、Story Memory v2、有限自动返修、场景证据门禁和跨集连续性合同。
+## 成本说明
 
-Phase 3.2 可为指定集生成 Writer Brief：
+- 模型：DeepSeek V4 Flash（`deepseek-v4-flash`），文本模型单价很低
+- 完整 10 集生成 ≈ 500~700 万 token，约 7~9 元人民币（含重试）
+- 单集成本是常量：重生成某一集只花那一集的钱，不会重刷历史
 
-```powershell
-$briefBody = @{
-  target_duration_seconds = 90
-  force_regenerate = $false
-} | ConvertTo-Json
+## License
 
-Invoke-RestMethod -Method Post `
-  -Uri "http://127.0.0.1:8000/api/v1/projects/$($project.id)/episodes/1/writer-brief" `
-  -ContentType "application/json" `
-  -Body $briefBody
-```
-
-查询已保存的 Writer Brief：
-
-```powershell
-Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/$($project.id)/episodes/1/writer-brief"
-```
-
-生成剧本时可选择使用已保存 Writer Brief：
-
-```powershell
-$scriptBody = @{
-  target_duration_seconds = 90
-  use_showrunner_brief = $true
-} | ConvertTo-Json
-
-Invoke-RestMethod -Method Post `
-  -Uri "http://127.0.0.1:8000/api/v1/projects/$($project.id)/episodes/1/script" `
-  -ContentType "application/json" `
-  -Body $scriptBody
-```
-
-`use_showrunner_brief` 默认为 `$false`。开启后系统只读取已保存 Brief，不会自动生成 Brief。
-
-如需开启 Showrunner QC 门禁，让剧本先作为 draft 接受审核：
-
-```powershell
-$scriptBody = @{
-  target_duration_seconds = 90
-  use_showrunner_brief = $true
-  run_showrunner_qc = $true
-  max_revision_attempts = 1
-} | ConvertTo-Json
-
-Invoke-RestMethod -Method Post `
-  -Uri "http://127.0.0.1:8000/api/v1/projects/$($project.id)/episodes/1/script" `
-  -ContentType "application/json" `
-  -Body $scriptBody
-```
-
-系统先执行规则型 QC，再执行 LLM Showrunner QC，最后由后端确定性校验 `memory_evidence` 和 `continuity_resolutions`。QC 只有 `pass` 且所有正式记忆都能定位到场景原文、上一集连续性合同逐条处理完成时，才会保存正式剧本，并用审核后的 `approved_memory` 更新 Story Memory v2；`warning` 或 `fail` 会触发最多 `max_revision_attempts` 次返修，达到上限仍未通过则阻断保存。QC 报告仍可查询：
-
-```powershell
-Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/projects/$($project.id)/episodes/1/showrunner-qc"
-```
-
-## 运行测试
-
-```powershell
-.\.venv\Scripts\python.exe -m pytest -q
-```
-
-## 文档
-
-前端调用契约见 `docs/01_architecture/API.md`；如果想理解每个接口背后的调用链、读写字段、Agent 和日志事件，见 `docs/01_architecture/API_FLOW_MAP.md`；其他产品与设计文档见 `docs/` 目录。
+MIT

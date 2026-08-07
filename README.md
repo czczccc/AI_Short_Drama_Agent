@@ -114,6 +114,24 @@ POST /api/v1/projects/1/episodes/1/script
 # 195 passed
 ```
 
+## 质量验证
+
+除生成链路的逐集 QC 外，项目提供**整季质量审计工具**（纯代码、零 LLM 成本）：
+
+```bash
+# 对已有项目（如 id=4）做整季结构审计
+.venv/Scripts/python tools/season_audit.py --project-id 4 --report docs/reports/season_audit_project4.md
+```
+
+审计四类结构问题（自动分级 P0 致命 / P1 严重 / P2 提示）：
+
+- **义务闭合**：每集产生的跨集义务是否最终被解决（结局期放宽）
+- **计划兑现**：episode_plan 每集的 must_include 节拍是否出现在剧本中（jieba 分词宽松匹配）
+- **钩子承接**：ep N 的 ending_hook 是否在 ep N+1 被承接
+- **结构健康**：场景数/时长分布、opening/ending hook 存在性
+
+真实审计示例见 [docs/reports/season_audit_project4.md](docs/reports/season_audit_project4.md)（对"午夜丢失的手机-v2"10 集的审计：P0=3 P1=4，全部定位到具体集）。
+
 ## 项目结构
 
 ```
@@ -130,6 +148,7 @@ app/
 └── prompts/      # 各 Agent 系统提示词
 tools/
 ├── generate_season.py   # 一键整季生成工具
+├── season_audit.py      # 整季质量审计（纯代码，零 LLM 成本）
 └── text_eval_runner.py  # 评测驱动器（离线工具）
 docs/              # 架构/API/数据模型/工作流文档
 tests/             # 195 个测试

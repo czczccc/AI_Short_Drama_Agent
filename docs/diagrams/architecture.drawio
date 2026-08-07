@@ -1,0 +1,80 @@
+<mxfile host="app.diagrams.net">
+  <diagram id="ai-drama-arch" name="系统架构">
+    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ============ API 层 ============ -->
+        <mxCell id="layer-api" value="API 层（FastAPI 路由 · 参数校验 · 异常→HTTP）" style="swimlane;startSize=34;fillColor=#dae8fc;strokeColor=#6c8ebf;swimlaneFillColor=#ffffff;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="30" y="40" width="1400" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="api-main" value="api/main.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="layer-api"><mxGeometry x="20" y="50" width="160" height="46" as="geometry" /></mxCell>
+        <mxCell id="api-proj" value="projects.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="layer-api"><mxGeometry x="200" y="50" width="160" height="46" as="geometry" /></mxCell>
+        <mxCell id="api-out" value="outlines.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="layer-api"><mxGeometry x="380" y="50" width="160" height="46" as="geometry" /></mxCell>
+        <mxCell id="api-chars" value="characters.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="layer-api"><mxGeometry x="560" y="50" width="160" height="46" as="geometry" /></mxCell>
+        <mxCell id="api-sr" value="showrunner.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="layer-api"><mxGeometry x="740" y="50" width="160" height="46" as="geometry" /></mxCell>
+        <mxCell id="api-scripts" value="scripts.py ★" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" vertex="1" parent="layer-api"><mxGeometry x="920" y="50" width="160" height="46" as="geometry" /></mxCell>
+        <mxCell id="api-dev" value="dev.py（调试）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="layer-api"><mxGeometry x="1100" y="50" width="160" height="46" as="geometry" /></mxCell>
+
+        <!-- ============ Service 层 ============ -->
+        <mxCell id="layer-svc" value="Service 层（业务编排 · 合同构造 · 证据门禁）" style="swimlane;startSize=34;fillColor=#d5e8d4;strokeColor=#82b366;swimlaneFillColor=#ffffff;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="30" y="200" width="1400" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="svc-proj" value="project_service" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="layer-svc"><mxGeometry x="20" y="50" width="140" height="40" as="geometry" /></mxCell>
+        <mxCell id="svc-out" value="outline_service" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="layer-svc"><mxGeometry x="175" y="50" width="140" height="40" as="geometry" /></mxCell>
+        <mxCell id="svc-chars" value="character_service" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="layer-svc"><mxGeometry x="330" y="50" width="140" height="40" as="geometry" /></mxCell>
+        <mxCell id="svc-sr" value="showrunner_service" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="layer-svc"><mxGeometry x="485" y="50" width="150" height="40" as="geometry" /></mxCell>
+        <mxCell id="svc-script" value="script_service ★" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" vertex="1" parent="layer-svc"><mxGeometry x="650" y="50" width="140" height="40" as="geometry" /></mxCell>
+        <mxCell id="svc-mem" value="memory_service" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="layer-svc"><mxGeometry x="805" y="50" width="140" height="40" as="geometry" /></mxCell>
+        <mxCell id="svc-ground" value="qc_grounding ★" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" vertex="1" parent="layer-svc"><mxGeometry x="960" y="50" width="140" height="40" as="geometry" /></mxCell>
+        <mxCell id="svc-cqc" value="continuity_qc" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="layer-svc"><mxGeometry x="1115" y="50" width="130" height="40" as="geometry" /></mxCell>
+        <mxCell id="svc-qc" value="qc_service（dev）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="layer-svc"><mxGeometry x="1260" y="50" width="120" height="40" as="geometry" /></mxCell>
+
+        <!-- ============ Agent 层 ============ -->
+        <mxCell id="layer-agent" value="Agent 层（LLM 提示词编排 · 输出校验重试）" style="swimlane;startSize=34;fillColor=#fff2cc;strokeColor=#d6b656;swimlaneFillColor=#ffffff;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="30" y="390" width="1400" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="ag-dir" value="Director（大纲）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="layer-agent"><mxGeometry x="60" y="50" width="180" height="46" as="geometry" /></mxCell>
+        <mxCell id="ag-char" value="Character（角色）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="layer-agent"><mxGeometry x="300" y="50" width="180" height="46" as="geometry" /></mxCell>
+        <mxCell id="ag-sr" value="Showrunner（总控/Brief）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="layer-agent"><mxGeometry x="540" y="50" width="200" height="46" as="geometry" /></mxCell>
+        <mxCell id="ag-writer" value="Writer（剧本）★" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" vertex="1" parent="layer-agent"><mxGeometry x="800" y="50" width="180" height="46" as="geometry" /></mxCell>
+        <mxCell id="ag-qc" value="QC（质检）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="layer-agent"><mxGeometry x="1040" y="50" width="180" height="46" as="geometry" /></mxCell>
+
+        <!-- ============ Provider 层 ============ -->
+        <mxCell id="layer-prov" value="Provider 层（模型适配 · 外部依赖抽象）" style="swimlane;startSize=34;fillColor=#e1d5e7;strokeColor=#9673a6;swimlaneFillColor=#ffffff;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="30" y="550" width="1400" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="prov-llm" value="LLM Provider（DeepSeek V4 Flash + factory）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="layer-prov"><mxGeometry x="100" y="50" width="320" height="46" as="geometry" /></mxCell>
+        <mxCell id="prov-video" value="Video Provider（fake 占位，冻结）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="layer-prov"><mxGeometry x="900" y="50" width="300" height="46" as="geometry" /></mxCell>
+
+        <!-- ============ 数据层 ============ -->
+        <mxCell id="layer-data" value="数据层（SQLite 单表 projects · Pydantic 契约）" style="swimlane;startSize=34;fillColor=#f8cecc;strokeColor=#b85450;swimlaneFillColor=#ffffff;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="30" y="710" width="1400" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="db-models" value="models/project.py（5 个 JSON 列）" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="layer-data"><mxGeometry x="150" y="50" width="220" height="60" as="geometry" /></mxCell>
+        <mxCell id="db-sqlite" value="SQLite（data/app.db）" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="layer-data"><mxGeometry x="600" y="50" width="200" height="60" as="geometry" /></mxCell>
+        <mxCell id="db-schemas" value="schemas/（Pydantic 强校验）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="layer-data"><mxGeometry x="1000" y="50" width="240" height="60" as="geometry" /></mxCell>
+
+        <!-- ============ 横切 ============ -->
+        <mxCell id="obs" value="observability/（JSONL 日志 · request_id 全链路）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="30" y="880" width="1400" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- ============ 关键链路边 ============ -->
+        <mxCell id="e1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="api-scripts" target="svc-script"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="api-out" target="svc-out"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="api-chars" target="svc-chars"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="api-sr" target="svc-sr"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e5" value="Writer→QC→返修循环" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontColor=#d79b00;" edge="1" parent="1" source="svc-script" target="ag-writer"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="svc-script" target="ag-qc"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e7" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="ag-writer" target="prov-llm"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e8" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="ag-qc" target="prov-llm"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e9" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="ag-sr" target="prov-llm"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e10" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="svc-script" target="db-models"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e11" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="svc-sr" target="svc-mem"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e12" value="证据门禁" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="ag-qc" target="svc-ground"><mxGeometry relative="1" as="geometry" /></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
